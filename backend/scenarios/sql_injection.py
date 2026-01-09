@@ -10,6 +10,10 @@ from backend.core.state import (
 
 
 class SQLInjectionScenario(Scenario):
+    
+    def __init__(self, config):
+        super().__init__(config)
+
 
     def allowed_actions(self, state: GameState) -> list[str]:
         if state.phase == Phase.RECON:
@@ -64,14 +68,21 @@ class SQLInjectionScenario(Scenario):
 
     def attacker_response(self, state: GameState) -> None:
         if state.defense_level == DefenseLevel.WEAK and state.attack_stage == AttackStage.EXPLOITATION:
+            state.record_mistake("late_defense")
+
             state.is_compromised = True
             state.risk_score += 1.5
+
             state.add_event(
-                FeedbackEngine.defensive_mistake(
-                    reason="No WAF or query hardening blocked the exploit.",
-                    lesson="Defense-in-depth reduces attack success probability."
+                FeedbackEngine.adaptive_warning(
+                    state,
+                    key="late_defense",
+                    base_reason="Defense was applied after exploitation began.",
+                    lesson="Mitigations must be applied before exploit attempts.",
+                    level=self.config.feedback_level
                 )
             )
+
 
     def is_complete(self, state: GameState) -> bool:
         return state.is_compromised or state.defense_level == DefenseLevel.STRONG

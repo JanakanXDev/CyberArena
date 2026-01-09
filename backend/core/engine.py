@@ -1,19 +1,29 @@
 from backend.core.state import GameState, Phase
 from backend.scenarios.base import Scenario
+from backend.core.scoring import ScoringEngine
+
 
 
 class GameEngine:
-    def __init__(self, attacker, scenario: Scenario):
+    def __init__(self, attacker, scenario, config):
         self.state = GameState()
         self.attacker = attacker
         self.scenario = scenario
+        self.config = config
+
+    def get_result(self):
+        return ScoringEngine.calculate(self.state)
 
     def start(self):
         if self.state.phase != Phase.INIT:
             raise RuntimeError("Game already started")
         self.state.phase = Phase.RECON
-
+    
     def player_action(self, action: str):
+        if self.state.turn_count >= self.config.max_turns:
+            self.state.phase = Phase.COMPLETE
+            return
+
         if self.state.phase == Phase.COMPLETE:
             raise RuntimeError("Game already completed")
 

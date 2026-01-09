@@ -3,10 +3,9 @@ from backend.core.state import GameState
 
 
 class Scenario(ABC):
-    """
-    Base class for all cyber scenarios.
-    Engine talks ONLY to this interface.
-    """
+    def __init__(self, config):
+        self.config = config
+
 
     @abstractmethod
     def allowed_actions(self, state: GameState) -> list[str]:

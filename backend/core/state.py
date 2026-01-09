@@ -44,9 +44,32 @@ class GameState:
     is_secured: bool = False
 
     events: List[Event] = field(default_factory=list)
+    mistake_counter: dict[str, int] = field(default_factory=dict)
+    def record_mistake(self, key: str):
+        self.mistake_counter[key] = self.mistake_counter.get(key, 0) + 1
 
     def advance_turn(self):
         self.turn_count += 1
 
     def add_event(self, event: Event):
         self.events.append(event)
+    def to_dict(self):
+        return {
+            "phase": self.phase.name,
+            "attack_stage": self.attack_stage.name,
+            "defense_level": self.defense_level.name,
+            "discovered_vectors": self.discovered_vectors,
+            "exposed_assets": self.exposed_assets,
+            "risk_score": self.risk_score,
+            "turn_count": self.turn_count,
+            "is_compromised": self.is_compromised,
+            "is_secured": self.is_secured,
+            "events": [
+                {
+                    "title": e.title,
+                    "description": e.description
+                }
+                for e in self.events
+            ]
+        }
+        
