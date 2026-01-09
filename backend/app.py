@@ -1,13 +1,15 @@
 # app.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from game_engine import CyberGame
+from ai.attacker import AttackerAI
+from core.engine import GameEngine
 
 app = Flask(__name__)
 CORS(app)
 
 # single game instance (for demo/prototype). In production, you'd support multiple sessions.
-game = CyberGame(stealth="medium")
+game = GameEngine(stealth="medium")
+
 
 @app.route("/attack", methods=["GET"])
 def attack():
