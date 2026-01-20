@@ -25,10 +25,13 @@ AI-Powered Ethical Hacking Learning Platform (PvP-style simulator for cybersecur
 ## 🎮 How to Play
 
 ### 1. Start the Backend
-Open a terminal and run:
+Open a terminal in the **root project directory** (where this README is) and run:
 ```bash
-cd backend
-python -m app
+# Windows
+python -m backend.app
+
+# Mac/Linux
+python3 -m backend.app
 ```
 The API will run on `http://127.0.0.1:5000`.
 
