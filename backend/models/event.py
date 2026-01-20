@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
+import uuid
 
 
 class EventType(Enum):
@@ -16,3 +17,4 @@ class Event:
     title: str
     description: str
     impact: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))

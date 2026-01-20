@@ -22,3 +22,10 @@ class Scenario(ABC):
     @abstractmethod
     def is_complete(self, state: GameState) -> bool:
         pass
+
+    def should_advance_phase(self, state: GameState) -> bool:
+        """
+        Determines if the engine should automatically advance to the next phase.
+        Default is True to maintain backward compatibility with simple scenarios.
+        """
+        return True
