@@ -112,15 +112,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction }) => {
         </div>
 
         {/* Zone 2: Action Panel (Top Right) - Hypothesis-based actions */}
-        <div className="col-span-5 row-span-1 border-b border-slate-800 bg-[#161618] relative overflow-hidden">
-          <div className="absolute top-0 left-0 bg-slate-800 text-[10px] text-slate-400 font-bold px-3 py-1 uppercase tracking-wider rounded-br z-10">
-            Actions
+        <div className="col-span-5 row-span-1 border-b border-slate-800 bg-[#161618] relative overflow-hidden flex flex-col">
+          <div className="absolute top-0 left-0 bg-slate-800 text-[10px] text-slate-400 font-bold px-3 py-1 uppercase tracking-wider rounded-br z-20">
+            Actions & Hypotheses
           </div>
-          <ActionPanel
-            actions={state.availableActions}
-            hypotheses={state.hypotheses}
-            onAction={onAction}
-          />
+          <div className="pt-6 h-full">
+            <ActionPanel
+              actions={state.availableActions}
+              hypotheses={state.hypotheses}
+              onAction={onAction}
+            />
+          </div>
         </div>
 
         {/* Zone 3: State Panel (Bottom Left) - Risk, detection, integrity, AI aggressiveness */}

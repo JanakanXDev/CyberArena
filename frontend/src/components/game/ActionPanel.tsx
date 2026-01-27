@@ -13,66 +13,66 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   hypotheses,
   onAction
 }) => {
-  console.log('ActionPanel rendering with:', { actionsCount: actions.length, hypothesesCount: hypotheses.length });
-  
   const [selectedHypothesis, setSelectedHypothesis] = useState<string | null>(null);
 
   const handleHypothesisSelect = (hypothesisId: string) => {
-    console.log('Hypothesis selected:', hypothesisId);
     setSelectedHypothesis(hypothesisId);
     onAction(`hypothesis:${hypothesisId}`);
   };
 
-  // Debug output
-  console.log('ActionPanel render - Actions:', actions.map(a => ({ id: a.id, available: a.available })));
-  console.log('ActionPanel render - Hypotheses:', hypotheses.map(h => ({ id: h.id, tested: h.tested, validated: h.validated })));
-
   return (
-    <div className="h-full flex flex-col pt-8">
-      {/* Debug indicator */}
-      {actions.length === 0 && (
-        <div className="px-6 py-2 bg-red-900/20 border border-red-500/30 text-red-400 text-xs">
-          DEBUG: No actions received. Check console.
-        </div>
-      )}
-      {actions.length > 0 && (
-        <div className="px-6 py-2 bg-blue-900/20 border border-blue-500/30 text-blue-400 text-xs mb-2">
-          DEBUG: {actions.length} action(s) available. {actions.filter(a => a.available).length} available, {actions.filter(a => !a.available).length} locked.
-        </div>
-      )}
-      
-      {/* Hypotheses Section */}
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Hypotheses Section - Always Visible at Top */}
       {hypotheses.length > 0 && (
-        <div className="px-6 pb-4 border-b border-slate-800">
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-            <Brain className="w-3 h-3" />
-            Form Hypotheses
+        <div className="shrink-0 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-b-2 border-purple-500/50 px-6 py-4 overflow-y-auto" style={{ maxHeight: '45%' }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Brain className="w-5 h-5 text-purple-400" />
+            <span className="text-sm font-bold text-purple-400 uppercase tracking-widest">
+              Form Hypotheses
+            </span>
+            <span className="text-xs text-slate-500 ml-auto">
+              ({hypotheses.filter(h => !h.tested).length} untested)
+            </span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {hypotheses.map((hyp) => (
               <button
                 key={hyp.id}
                 onClick={() => handleHypothesisSelect(hyp.id)}
                 disabled={hyp.tested}
-                className={`w-full text-left p-3 rounded border transition-all ${
+                className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                   hyp.tested
                     ? hyp.validated === true
-                      ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400'
+                      ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-300 shadow-lg shadow-emerald-500/20'
                       : hyp.validated === false
-                      ? 'bg-red-900/20 border-red-500/30 text-red-400'
+                      ? 'bg-red-900/30 border-red-500/50 text-red-300 shadow-lg shadow-red-500/20'
                       : 'bg-slate-900/50 border-slate-800 text-slate-600'
                     : selectedHypothesis === hyp.id
-                    ? 'bg-blue-900/20 border-blue-500/50 text-blue-400'
-                    : 'bg-slate-900/50 border-slate-800 hover:border-slate-700 text-slate-300'
+                    ? 'bg-blue-900/30 border-blue-500/70 text-blue-300 shadow-lg shadow-blue-500/30'
+                    : 'bg-slate-900/70 border-slate-700 hover:border-purple-500/50 hover:bg-slate-800 text-slate-200 cursor-pointer'
                 }`}
               >
-                <div className="text-xs font-bold mb-1">{hyp.label}</div>
-                {hyp.description && (
-                  <div className="text-[10px] text-slate-500">{hyp.description}</div>
-                )}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="text-sm font-bold mb-2">{hyp.label}</div>
+                    {hyp.description && (
+                      <div className="text-xs text-slate-400 leading-relaxed">{hyp.description}</div>
+                    )}
+                  </div>
+                  {hyp.tested && (
+                    <div className={`text-lg font-bold ${hyp.validated === true ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {hyp.validated === true ? '✓' : '✗'}
+                    </div>
+                  )}
+                </div>
                 {hyp.tested && (
-                  <div className="text-[10px] mt-1">
-                    {hyp.validated === true ? '✓ Validated' : '✗ Invalidated'}
+                  <div className={`text-xs mt-2 font-bold ${hyp.validated === true ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {hyp.validated === true ? 'Validated' : 'Invalidated'}
+                  </div>
+                )}
+                {!hyp.tested && (
+                  <div className="text-xs mt-2 text-purple-400 font-bold">
+                    Click to test this hypothesis
                   </div>
                 )}
               </button>
@@ -81,10 +81,16 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
         </div>
       )}
 
-      {/* Actions Section */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
-          Available Actions
+      {/* Actions Section - Scrollable */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+        <div className="flex items-center gap-2 mb-4 sticky top-0 bg-[#161618] pb-2 z-10">
+          <Crosshair className="w-4 h-4 text-emerald-400" />
+          <span className="text-sm font-bold text-emerald-400 uppercase tracking-widest">
+            Available Actions
+          </span>
+          <span className="text-xs text-slate-500 ml-auto">
+            ({actions.filter(a => a.available).length} available)
+          </span>
         </div>
         <div className="space-y-3">
           {actions.length === 0 ? (
@@ -125,20 +131,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('=== ACTION CLICKED ===');
-                    console.log('Action ID:', action.id);
-                    console.log('Action label:', action.label);
-                    console.log('onAction function:', typeof onAction);
-                    console.log('Calling onAction with:', action.id);
-                    try {
-                      onAction(action.id);
-                      console.log('onAction called successfully');
-                    } catch (error) {
-                      console.error('Error calling onAction:', error);
-                    }
-                  }}
-                  onMouseDown={(e) => {
-                    console.log('Button mousedown:', action.id);
+                    onAction(action.id);
                   }}
                   className="w-full text-left border-2 border-slate-700 bg-[#1f1f22] hover:bg-[#252529] hover:border-emerald-500 rounded-lg p-4 transition-all group cursor-pointer relative z-10 active:scale-95"
                   style={{ pointerEvents: 'auto', WebkitTapHighlightColor: 'transparent' }}
