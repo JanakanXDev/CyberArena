@@ -1,80 +1,59 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Dashboard } from '../layout/Dashboard';
+import { BriefingScreen } from './BriefingScreen';
 import { api } from '../../api/client';
 import { GameState, LearningMode } from '../../types/game';
-import { RefreshCw, Play } from 'lucide-react';
 
 const LOADING_STATE: GameState = {
   mode: 'guided_simulation',
   scenarioId: 'loading',
   scenarioName: 'Initializing...',
   turnCount: 0,
-  riskScore: 0,
-  detectionLevel: 0,
-  integrity: 100,
-  aiAggressiveness: 0,
+  pressure: 0,
+  stability: 100,
   availableActions: [],
   hypotheses: [],
   logs: [],
   systemComponents: {},
-  vulnerabilities: {},
+  systemConditions: {},
   userAssumptions: [],
   actionHistory: [],
   contradictions: [],
-  isGameOver: false,
+  sessionStatus: 'active',
   missionComplete: false
 };
 
 export const GameSession = () => {
-  console.log('GameSession component rendering');
-  
-  const navigate = useNavigate();
   const location = useLocation();
-  const { 
+  const {
     mode = 'guided_simulation' as LearningMode,
     scenarioId = 'input_trust_failures',
-    difficulty = 'medium'
+    difficulty = 'medium',
+    scenarioName = 'Operation: Broken Trust'
   } = location.state || {};
-  
-  console.log('GameSession location state:', { mode, scenarioId, difficulty });
-  
-  const [gameState, setGameState] = useState<GameState>(LOADING_STATE);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    console.log('GameSession useEffect triggered');
-    const initGame = async () => {
-      console.log('initGame called with:', { mode, difficulty, scenarioId });
-      setIsLoading(true);
-      try {
-        console.log('Calling api.startGame...');
-        const initialState = await api.startGame(mode, difficulty, scenarioId, 0);
-        console.log('Initial game state received:', initialState);
-        console.log('Available actions:', initialState.availableActions?.length || 0);
-        console.log('Available action IDs:', initialState.availableActions?.map((a: any) => a.id) || []);
-        console.log('Hypotheses:', initialState.hypotheses?.length || 0);
-        setGameState(initialState);
-        console.log('Game state set');
-      } catch (error) {
-        console.error("Connection failed:", error);
-        console.error("Error details:", error);
-        alert(`Failed to start game: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        setIsLoading(false);
-        console.log('Loading set to false');
-      }
-    };
-    initGame();
-  }, [mode, scenarioId, difficulty]);
+  // Phase: 'briefing' → 'loading' → 'playing'
+  const [phase, setPhase] = useState<'briefing' | 'loading' | 'playing'>('briefing');
+  const [gameState, setGameState] = useState<GameState>(LOADING_STATE);
+
+  const startGame = useCallback(async () => {
+    setPhase('loading');
+    try {
+      const initialState = await api.startGame(mode, difficulty, scenarioId, 0);
+      setGameState(initialState);
+      setPhase('playing');
+    } catch (error) {
+      console.error('Connection failed:', error);
+      alert(`Failed to start game: ${error instanceof Error ? error.message : String(error)}`);
+      setPhase('briefing'); // Allow retry
+    }
+  }, [mode, difficulty, scenarioId]);
 
   const handleAction = async (input: string) => {
-    if (gameState.isGameOver || gameState.missionComplete) return;
-
-    console.log('Handling action:', input);
+    if (gameState.sessionStatus === 'collapsed' || gameState.missionComplete) return;
     try {
       const newState = await api.sendAction(input);
-      console.log('Action response:', newState);
       setGameState(newState);
     } catch (error) {
       console.error('Action error:', error);
@@ -82,20 +61,26 @@ export const GameSession = () => {
     }
   };
 
-  const handleRestart = () => window.location.reload();
-  const handleExit = () => navigate('/');
-
-  if (isLoading) {
+  if (phase === 'briefing') {
     return (
-      <div className="bg-black min-h-screen flex items-center justify-center text-emerald-500 font-mono text-xl animate-pulse">
-        ESTABLISHING UPLINK...
-      </div>
+      <BriefingScreen
+        mode={mode}
+        scenarioName={scenarioName}
+        onBegin={startGame}
+      />
     );
   }
 
-  // No completion screen - continuous simulation
-  // In Guided Simulation mode, show debrief only at end
-  // In other modes, simulation continues indefinitely
+  if (phase === 'loading') {
+    return (
+      <div className="bg-black min-h-screen flex flex-col items-center justify-center gap-4 font-mono">
+        <div className="text-emerald-500 text-xl animate-pulse tracking-widest">ESTABLISHING UPLINK...</div>
+        <div className="w-48 h-0.5 bg-slate-800 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 animate-[slide_1.5s_ease-in-out_infinite]" style={{ width: '60%' }} />
+        </div>
+      </div>
+    );
+  }
 
   return <Dashboard state={gameState} onAction={handleAction} />;
 };

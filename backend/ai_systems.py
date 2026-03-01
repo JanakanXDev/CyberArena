@@ -44,23 +44,76 @@ class OpponentAI:
         self.action_history: List[Dict[str, Any]] = []
         self.user_patterns: Dict[str, Any] = {}
         self.threat_level: int = 0
+        self.last_intent: str = "unknown"
+    
+    def evaluate_intent(self, action: Optional[Action], hypothesis_id: Optional[str] = None,
+                        hypothesis_label: Optional[str] = None) -> str:
+        """Evaluate user intent from action or hypothesis without exposing it"""
+        if action and action.type == "hypothesis":
+            self.last_intent = "test_hypothesis"
+            return self.last_intent
         
-    def react_to_action(self, user_action: Action, state: SystemState):
+        if hypothesis_id:
+            self.last_intent = "test_hypothesis"
+            return self.last_intent
+        
+        if not action:
+            self.last_intent = "unknown"
+            return self.last_intent
+        
+        action_type = (action.type or "").lower()
+        if "probe" in action_type or "inspect" in action_type:
+            self.last_intent = "recon"
+        elif "escalate" in action_type:
+            self.last_intent = "escalation"
+        elif "isolate" in action_type or "restrict" in action_type or "monitor" in action_type:
+            self.last_intent = "containment"
+        else:
+            self.last_intent = "unknown"
+        
+        return self.last_intent
+        
+    def react_to_action(self, user_action: Optional[Action], state: SystemState,
+                        available_actions: Optional[List[Action]] = None,
+                        intent: Optional[str] = None,
+                        mode: Optional[LearningMode] = None) -> List[Dict[str, Any]]:
         """React to user action based on persona and difficulty"""
-        self.action_history.append({
-            "action_id": user_action.id,
-            "turn": len(self.action_history) + 1,
-            "user_action": user_action.label
-        })
-        
+        if user_action:
+            self.action_history.append({
+                "action_id": user_action.id,
+                "turn": len(self.action_history) + 1,
+                "user_action": user_action.label
+            })
+
         # Analyze user pattern
-        self._analyze_user_pattern(user_action, state)
+        if user_action:
+            self._analyze_user_pattern(user_action, state)
         
-        # React based on persona
+        if intent:
+            self.last_intent = intent
+
+        # React based on persona and mode
+        ai_actions = []
         if self.persona == AIPersona.DEFENDER:
-            self._defender_reaction(user_action, state)
+            self._defender_reaction(user_action, state, ai_actions, mode)
         else:  # ATTACKER
-            self._attacker_reaction(user_action, state)
+            self._attacker_reaction(user_action, state, ai_actions, mode)
+
+        # Mandatory strategy-punishment system
+        if user_action:
+            ai_actions.extend(self._punish_repetition(user_action, state, mode))
+            
+        # Update Visual State
+        if state and hasattr(state, "ai_visual_state"):
+            state.ai_visual_state.entropy = min(100, state.ai_visual_state.entropy + len(ai_actions) * 2)
+            if self.threat_level > 70:
+                state.ai_visual_state.posture = "aggressive" if self.persona.value == "attacker" else "defensive"
+                state.ai_visual_state.distance = "approaching" if self.persona.value == "attacker" else "closing"
+            elif self.threat_level > 30:
+                state.ai_visual_state.posture = "observing"
+                state.ai_visual_state.distance = "middle"
+        
+        return ai_actions
     
     def _analyze_user_pattern(self, action: Action, state: SystemState):
         """Analyze user behavior patterns for adaptation"""
@@ -68,150 +121,310 @@ class OpponentAI:
         
         # Track action frequency
         if action_type not in self.user_patterns:
-            self.user_patterns[action_type] = {"count": 0, "success_rate": 0}
+            self.user_patterns[action_type] = {"count": 0, "success_rate": 0, "streak": 0}
         
         self.user_patterns[action_type]["count"] += 1
+        self.user_patterns[action_type]["streak"] += 1
+        # Reset streaks for other types
+        for key in self.user_patterns:
+            if key != action_type:
+                self.user_patterns[key]["streak"] = 0
         
         # Update threat level
-        if action.risk_delta > 0:
-            self.threat_level = min(100, self.threat_level + action.risk_delta)
-        if action.detection_delta > 0:
-            self.threat_level = min(100, self.threat_level + action.detection_delta)
+        if action.pressure_delta > 0:
+            self.threat_level = min(100, self.threat_level + action.pressure_delta)
+        if action.stability_delta < 0:
+            self.threat_level = min(100, self.threat_level + abs(action.stability_delta))
     
-    def _defender_reaction(self, user_action: Action, state: SystemState):
+    def _defender_reaction(self, user_action: Optional[Action], state: SystemState,
+                           ai_actions: List[Dict[str, Any]], mode: Optional[LearningMode]):
         """Defender AI reactions (when user is attacker)"""
+        # Mode-specific behavior layering
+        if mode == LearningMode.GUIDED_SIMULATION:
+            if state.pressure > 30:
+                ai_actions.append(self._subtle_monitoring(state))
+            if state.pressure > 60 and len(self.action_history) % 3 == 0:
+                ai_actions.append(self._introduce_contradiction(state))
+        elif mode == LearningMode.PLAYGROUND:
+            if state.pressure > 40:
+                ai_actions.append(self._aggressive_rate_limit(state))
+            if state.pressure > 70:
+                ai_actions.append(self._temporary_lockdown(state))
+        elif mode == LearningMode.ATTACKER_CAMPAIGN:
+            if state.pressure > 20:
+                ai_actions.append(self._enable_logging(state))
+            if state.pressure > 50:
+                ai_actions.append(self._tighten_validation(state))
+        
         if self.difficulty == AIDifficulty.RULE_BASED:
             # Simple rule-based responses
-            if state.detection_level > 30:
-                self._enable_logging(state)
-            if state.detection_level > 50:
-                self._block_suspicious_activity(state)
-            if state.risk_score > 60:
-                self._deploy_emergency_patch(state)
+            if state.pressure > 30:
+                ai_actions.append(self._enable_logging(state))
+            if state.pressure > 50:
+                ai_actions.append(self._block_suspicious_activity(state))
+            if state.pressure > 60:
+                ai_actions.append(self._deploy_emergency_patch(state))
         
         elif self.difficulty == AIDifficulty.ADAPTIVE:
             # Adapt based on user patterns
-            if "probe" in user_action.type.lower():
+            if user_action and "probe" in user_action.type.lower():
                 # User is probing - increase monitoring
-                self._enable_logging(state)
-                self._deploy_honeypot(state)
+                ai_actions.append(self._enable_logging(state))
+                ai_actions.append(self._deploy_honeypot(state))
+                ai_actions.append(self._tighten_validation(state))
+                ai_actions.append(self._introduce_timing_noise(state))
             
-            if "escalate" in user_action.type.lower():
+            if user_action and "escalate" in user_action.type.lower():
                 # User is escalating - block and patch
-                self._block_suspicious_activity(state)
-                self._deploy_emergency_patch(state)
+                ai_actions.append(self._block_suspicious_activity(state))
+                ai_actions.append(self._deploy_emergency_patch(state))
+                ai_actions.append(self._lock_sensitive_operations(state))
             
             # Learn from repeated patterns
             if self.user_patterns.get("probe", {}).get("count", 0) > 3:
                 # User probes repeatedly - deploy deception
-                self._deploy_deception(state)
+                ai_actions.append(self._deploy_deception(state))
         
         elif self.difficulty == AIDifficulty.DECEPTIVE:
             # Counter-strategic behavior
             # Let user think they're succeeding, then counter
-            if state.detection_level < 20 and self.threat_level > 50:
+            if state.pressure < 25 and self.threat_level > 50:
                 # User thinks they're stealthy but we detected them
-                self._silent_monitoring(state)
-                self._prepare_counter_attack(state)
+                ai_actions.append(self._silent_monitoring(state))
+                ai_actions.append(self._prepare_counter_attack(state))
+                ai_actions.append(self._schedule_countermeasure(state))
+                ai_actions.append(self._partial_patch(state))
             
             # Deceptive responses
-            if "probe" in user_action.type.lower():
+            if user_action and "probe" in user_action.type.lower():
                 # Feed false information
-                self._feed_false_lead(state)
+                ai_actions.append(self._feed_false_lead(state))
+                ai_actions.append(self._introduce_timing_noise(state))
+                ai_actions.append(self._inject_deceptive_response(state))
             
             # Adaptive counter-strategies
             if len(self.action_history) > 5:
                 # Identify user strategy and counter it
                 strategy = self._identify_user_strategy()
-                self._counter_strategy(strategy, state)
+                ai_actions.extend(self._counter_strategy(strategy, state))
+                ai_actions.append(self._temporary_lockdown(state))
+                ai_actions.append(self._move_attack_surface(state))
     
-    def _attacker_reaction(self, user_action: Action, state: SystemState):
+    def _attacker_reaction(self, user_action: Optional[Action], state: SystemState,
+                           ai_actions: List[Dict[str, Any]], mode: Optional[LearningMode]):
         """Attacker AI reactions (when user is defender)"""
+        # Mode-specific behavior layering
+        if mode == LearningMode.DEFENDER_CAMPAIGN:
+            if state.pressure < 30:
+                ai_actions.append(self._stealth_probe(state))
+            if state.pressure > 50:
+                ai_actions.append(self._pivot_attack(state))
+        elif mode == LearningMode.PLAYGROUND:
+            if any(v.get("exploited") for v in state.vulnerabilities.values()):
+                ai_actions.append(self._establish_persistence(state))
+            if state.pressure > 60:
+                ai_actions.append(self._hide_tracks(state))
+        
         if self.difficulty == AIDifficulty.RULE_BASED:
             # Simple scripted attacks
-            if state.detection_level < 30:
-                self._probe_vulnerability(state)
-            if state.detection_level < 50:
-                self._escalate_privileges(state)
+            if state.pressure < 30:
+                ai_actions.append(self._probe_vulnerability(state))
+            if state.pressure < 50:
+                ai_actions.append(self._escalate_privileges(state))
         
         elif self.difficulty == AIDifficulty.ADAPTIVE:
             # Adapt to user defenses
-            if "monitor" in user_action.type.lower() or "isolate" in user_action.type.lower():
+            if user_action and ("monitor" in user_action.type.lower() or "isolate" in user_action.type.lower()):
                 # User is monitoring - change attack vector
-                self._change_attack_vector(state)
+                ai_actions.append(self._change_attack_vector(state))
+                ai_actions.append(self._move_attack_surface(state))
             
-            if "restrict" in user_action.type.lower():
+            if user_action and "restrict" in user_action.type.lower():
                 # User restricted something - try different approach
-                self._pivot_attack(state)
+                ai_actions.append(self._pivot_attack(state))
+                ai_actions.append(self._stealth_probe(state))
             
             # Escalate if user is slow to respond
-            if len(self.action_history) > 3 and state.detection_level < 20:
-                self._escalate_privileges(state)
+            if len(self.action_history) > 3 and state.pressure < 25:
+                ai_actions.append(self._escalate_privileges(state))
         
         elif self.difficulty == AIDifficulty.DECEPTIVE:
             # Advanced attacker behavior
             # Probe gradually, hide tracks, adapt
-            if state.detection_level < 10:
+            if state.pressure < 15:
                 # Very stealthy - continue probing
-                self._stealth_probe(state)
+                ai_actions.append(self._stealth_probe(state))
             
             # If user detects something, hide and change approach
-            if state.detection_level > 40:
-                self._hide_tracks(state)
-                self._change_attack_vector(state)
+            if state.pressure > 40:
+                ai_actions.append(self._hide_tracks(state))
+                ai_actions.append(self._change_attack_vector(state))
             
             # Persistence mechanisms
             if any(v.get("exploited") for v in state.vulnerabilities.values()):
-                self._establish_persistence(state)
+                ai_actions.append(self._establish_persistence(state))
     
     # Defender actions
-    def _enable_logging(self, state: SystemState):
+    def _make_action(self, name: str, message: str, effects: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return {"name": name, "message": message, "effects": effects or {}}
+    
+    def _enable_logging(self, state: SystemState) -> Dict[str, Any]:
         """Enable enhanced logging"""
-        state.detection_level = min(100, state.detection_level + 5)
-        for comp_id in state.system_components:
-            state.system_components[comp_id]["monitoring"] = True
+        effects = {
+            "pressure_delta": 2,
+            "set_monitoring": "all"
+        }
+        return self._make_action("enable_logging", "System-wide monitoring enabled.", effects)
     
-    def _block_suspicious_activity(self, state: SystemState):
+    def _block_suspicious_activity(self, state: SystemState) -> Dict[str, Any]:
         """Block suspicious IPs/accounts"""
-        state.detection_level = min(100, state.detection_level + 10)
-        state.active_defenses.append("ip_block")
+        effects = {
+            "pressure_delta": 4,
+            "add_defenses": ["ip_block"],
+            "lock_action_types": [{"type": "escalate", "turns": 1}]
+        }
+        return self._make_action("block_suspicious_activity", "Access filters updated.", effects)
     
-    def _deploy_emergency_patch(self, state: SystemState):
+    def _deploy_emergency_patch(self, state: SystemState) -> Dict[str, Any]:
         """Deploy emergency patch"""
-        # Patch one vulnerability
-        for vuln_id, vuln in state.vulnerabilities.items():
-            if vuln.get("active") and not vuln.get("patched"):
-                vuln["patched"] = True
-                vuln["active"] = False
-                break
+        effects = {
+            "patch_vulnerabilities": {"any_active": True},
+            "pressure_delta": 2
+        }
+        return self._make_action("deploy_emergency_patch", "Execution pathways hardened.", effects)
     
-    def _deploy_honeypot(self, state: SystemState):
+    def _deploy_honeypot(self, state: SystemState) -> Dict[str, Any]:
         """Deploy honeypot"""
-        state.active_defenses.append("honeypot")
-        state.detection_level = min(100, state.detection_level + 3)
+        effects = {
+            "add_defenses": ["honeypot"],
+            "pressure_delta": 2
+        }
+        return self._make_action("deploy_honeypot", "Decoy endpoint activated.", effects)
     
-    def _deploy_deception(self, state: SystemState):
+    def _deploy_deception(self, state: SystemState) -> Dict[str, Any]:
         """Deploy deception mechanisms"""
-        state.active_defenses.append("deception")
-        state.detection_level = min(100, state.detection_level + 5)
+        effects = {
+            "add_defenses": ["deception"],
+            "pressure_delta": 3,
+            "set_conditions": {"deception_active": True}
+        }
+        return self._make_action("deploy_deception", "Response stream altered.", effects)
     
-    def _silent_monitoring(self, state: SystemState):
+    def _silent_monitoring(self, state: SystemState) -> Dict[str, Any]:
         """Silent monitoring without alerting user"""
-        state.detection_level = min(100, state.detection_level + 2)
-        for comp_id in state.system_components:
-            state.system_components[comp_id]["monitoring"] = True
+        effects = {
+            "pressure_delta": 1,
+            "set_monitoring": "all"
+        }
+        return self._make_action("silent_monitoring", "Authentication subsystem entered monitoring mode.", effects)
     
-    def _prepare_counter_attack(self, state: SystemState):
+    def _prepare_counter_attack(self, state: SystemState) -> Dict[str, Any]:
         """Prepare counter-attack"""
-        state.ai_aggressiveness = min(100, state.ai_aggressiveness + 10)
+        effects = {
+            "ai_aggressiveness_delta": 10
+        }
+        return self._make_action("prepare_counter_attack", "Countermeasures prepared.", effects)
     
-    def _feed_false_lead(self, state: SystemState):
+    def _feed_false_lead(self, state: SystemState) -> Dict[str, Any]:
         """Feed false information to user"""
-        # Mark a false lead vulnerability as detected
-        for vuln_id, vuln in state.vulnerabilities.items():
-            if vuln.get("false_lead"):
-                vuln["detected"] = True
-                break
+        effects = {
+            "detect_vulnerabilities": {"false_lead": True}
+        }
+        return self._make_action("feed_false_lead", "Anomalous signals injected into traffic.", effects)
+    
+    def _tighten_validation(self, state: SystemState) -> Dict[str, Any]:
+        """Temporarily tighten validation rules"""
+        effects = {
+            "pressure_delta": 3,
+            "set_conditions": {"validation_tightened": True},
+            "lock_action_types": [{"type": "probe", "turns": 1}, {"type": "inspect", "turns": 1}]
+        }
+        return self._make_action("tighten_validation", "Input normalization policy updated.", effects)
+    
+    def _introduce_timing_noise(self, state: SystemState) -> Dict[str, Any]:
+        """Introduce timing noise to disrupt probing"""
+        effects = {
+            "set_monitoring": ["web_server"],
+            "pressure_delta": 1,
+            "set_conditions": {"timing_jitter": True},
+            "lock_action_types": [{"type": "probe", "turns": 1}]
+        }
+        return self._make_action("introduce_timing_noise", "Response timing jitter introduced.", effects)
+    
+    def _temporary_lockdown(self, state: SystemState) -> Dict[str, Any]:
+        """Temporary lockdown of sensitive operations"""
+        effects = {
+            "harden_components": ["web_server"],
+            "set_conditions": {"access_restricted": True},
+            "lock_action_types": [{"type": "escalate", "turns": 2}]
+        }
+        return self._make_action("temporary_lockdown", "Sensitive operations restricted.", effects)
+    
+    def _schedule_countermeasure(self, state: SystemState) -> Dict[str, Any]:
+        """Schedule delayed adaptive countermeasure"""
+        effects = {
+            "delayed_consequences": [
+                {
+                    "turn_delay": 2,
+                    "description": "Adaptive filtering intensified",
+                    "pressure_delta": 4
+                }
+            ]
+        }
+        return self._make_action("schedule_countermeasure", "Adaptive filtering scheduled.", effects)
+
+    def _subtle_monitoring(self, state: SystemState) -> Dict[str, Any]:
+        """Subtle monitoring increase for guided mode"""
+        effects = {
+            "set_monitoring": ["web_server"],
+            "pressure_delta": 1
+        }
+        return self._make_action("subtle_monitoring", "Passive monitoring enabled on web_server.", effects)
+    
+    def _introduce_contradiction(self, state: SystemState) -> Dict[str, Any]:
+        """Introduce contradiction to break assumptions"""
+        effects = {
+            "invalidate_assumptions": {"any_validated": True},
+            "add_contradiction": {"description": "Observed behavior contradicts recent assumption"}
+        }
+        return self._make_action("introduce_contradiction", "Inconsistent behavior observed in request handling.", effects)
+    
+    def _aggressive_rate_limit(self, state: SystemState) -> Dict[str, Any]:
+        """Aggressive rate limiting for playground"""
+        effects = {
+            "rate_limit": {"scope": "global", "severity": "high"},
+            "lock_action_types": [{"type": "probe", "turns": 2}, {"type": "inspect", "turns": 2}]
+        }
+        return self._make_action("aggressive_rate_limit", "Request rate limiting enforced.", effects)
+    
+    def _lock_sensitive_operations(self, state: SystemState) -> Dict[str, Any]:
+        """Lock high-impact operations temporarily"""
+        effects = {
+            "lock_action_types": [{"type": "escalate", "turns": 1}],
+            "pressure_delta": 2
+        }
+        return self._make_action("lock_sensitive_operations", "High-impact operations gated.", effects)
+    
+    def _partial_patch(self, state: SystemState) -> Dict[str, Any]:
+        """Partial patching to alter behavior without full mitigation"""
+        effects = {
+            "patch_vulnerabilities": {"any_active": True, "partial": True}
+        }
+        return self._make_action("partial_patch", "Behavioral filters updated.", effects)
+    
+    def _inject_deceptive_response(self, state: SystemState) -> Dict[str, Any]:
+        """Inject deceptive responses"""
+        effects = {
+            "inject_deception": {"target": "web_server"}
+        }
+        return self._make_action("inject_deceptive_response", "Deceptive responses injected into output stream.", effects)
+    
+    def _move_attack_surface(self, state: SystemState) -> Dict[str, Any]:
+        """Move or reshuffle attack surface"""
+        effects = {
+            "move_attack_surface": {"from_active": True}
+        }
+        return self._make_action("move_attack_surface", "Service routing changed; interface surface shifted.", effects)
     
     def _identify_user_strategy(self) -> str:
         """Identify user's strategy pattern"""
@@ -229,72 +442,148 @@ class OpponentAI:
         else:
             return "balanced"
     
-    def _counter_strategy(self, strategy: str, state: SystemState):
+    def _counter_strategy(self, strategy: str, state: SystemState) -> List[Dict[str, Any]]:
         """Counter user's identified strategy"""
+        actions = []
         if strategy == "stealth_probe":
             # User is being stealthy - increase monitoring
-            self._silent_monitoring(state)
-            self._deploy_honeypot(state)
+            actions.append(self._silent_monitoring(state))
+            actions.append(self._deploy_honeypot(state))
         elif strategy == "aggressive_escalation":
             # User is aggressive - block and patch
-            self._block_suspicious_activity(state)
-            self._deploy_emergency_patch(state)
+            actions.append(self._block_suspicious_activity(state))
+            actions.append(self._deploy_emergency_patch(state))
+        return actions
+
+    def _punish_repetition(self, user_action: Action, state: SystemState,
+                           mode: Optional[LearningMode]) -> List[Dict[str, Any]]:
+        """Escalate counters when user repeats the same approach"""
+        actions: List[Dict[str, Any]] = []
+        action_type = user_action.type
+        pattern = self.user_patterns.get(action_type, {})
+        count = pattern.get("count", 0)
+        streak = pattern.get("streak", 0)
+
+        if streak < 3 and count < 5:
+            return actions
+
+        # Guided mode is subtle and delayed
+        if mode == LearningMode.GUIDED_SIMULATION:
+            effects = {
+                "pressure_delta": 2,
+                "set_conditions": {"validation_tightened": True},
+                "delayed_consequences": [
+                    {
+                        "turn_delay": 2,
+                        "description": "Interface assumptions expired",
+                        "pressure_delta": 3
+                    }
+                ]
+            }
+            actions.append(self._make_action(
+                "pattern_resistance",
+                "Input normalization policy updated.",
+                effects
+            ))
+            return actions
+
+        # Escalate severity for repeated patterns
+        pressure = 4 if streak < 5 else 8
+        turns = 1 if streak < 5 else 2
+        conditions = {"validation_tightened": True, "timing_jitter": True}
+        if streak >= 5:
+            conditions.update({"route_shifted": True, "access_restricted": True})
+
+        effects = {
+            "pressure_delta": pressure,
+            "set_conditions": conditions,
+            "lock_action_types": [{"type": action_type, "turns": turns}]
+        }
+        actions.append(self._make_action(
+            "pattern_resistance",
+            "System response adapted to repeated approach.",
+            effects
+        ))
+        return actions
     
     # Attacker actions
-    def _probe_vulnerability(self, state: SystemState):
+    def _probe_vulnerability(self, state: SystemState) -> Dict[str, Any]:
         """Probe for vulnerabilities"""
-        state.risk_score = min(100, state.risk_score + 5)
-        state.active_attacks.append("probing")
+        effects = {
+            "pressure_delta": 4,
+            "add_attacks": ["probing"]
+        }
+        return self._make_action("probe_vulnerability", "Anomalous request patterns observed.", effects)
     
-    def _escalate_privileges(self, state: SystemState):
-        """Attempt privilege escalation"""
-        state.risk_score = min(100, state.risk_score + 10)
-        state.active_attacks.append("privilege_escalation")
+    def _escalate_privileges(self, state: SystemState) -> Dict[str, Any]:
+        """Attempt context elevation"""
+        effects = {
+            "pressure_delta": 6,
+            "stability_delta": -6,
+            "add_attacks": ["privilege_escalation"]
+        }
+        return self._make_action("escalate_privileges", "Execution boundaries stressed.", effects)
     
-    def _change_attack_vector(self, state: SystemState):
+    def _change_attack_vector(self, state: SystemState) -> Dict[str, Any]:
         """Change attack vector"""
-        state.active_attacks.append("vector_change")
-        # Reduce detection temporarily
-        state.detection_level = max(0, state.detection_level - 5)
+        effects = {
+            "pressure_delta": -2,
+            "add_attacks": ["vector_change"]
+        }
+        return self._make_action("change_attack_vector", "Attack surface shifted.", effects)
     
-    def _pivot_attack(self, state: SystemState):
+    def _pivot_attack(self, state: SystemState) -> Dict[str, Any]:
         """Pivot to different attack"""
-        state.active_attacks.append("pivot")
-        state.risk_score = min(100, state.risk_score + 8)
+        effects = {
+            "pressure_delta": 5,
+            "stability_delta": -4,
+            "add_attacks": ["pivot"]
+        }
+        return self._make_action("pivot_attack", "Lateral movement observed across subsystems.", effects)
     
-    def _stealth_probe(self, state: SystemState):
+    def _stealth_probe(self, state: SystemState) -> Dict[str, Any]:
         """Stealthy probing"""
-        state.risk_score = min(100, state.risk_score + 3)
-        state.detection_level = max(0, state.detection_level - 2)
-        state.active_attacks.append("stealth_probe")
+        effects = {
+            "pressure_delta": 2,
+            "add_attacks": ["stealth_probe"]
+        }
+        return self._make_action("stealth_probe", "Low-and-slow reconnaissance observed.", effects)
     
-    def _hide_tracks(self, state: SystemState):
+    def _hide_tracks(self, state: SystemState) -> Dict[str, Any]:
         """Hide attack tracks"""
-        state.detection_level = max(0, state.detection_level - 10)
-        state.active_attacks.append("hide_tracks")
+        effects = {
+            "pressure_delta": -4,
+            "add_attacks": ["hide_tracks"]
+        }
+        return self._make_action("hide_tracks", "Audit trail disrupted.", effects)
     
-    def _establish_persistence(self, state: SystemState):
+    def _establish_persistence(self, state: SystemState) -> Dict[str, Any]:
         """Establish persistence"""
-        state.risk_score = min(100, state.risk_score + 15)
-        state.active_attacks.append("persistence")
+        effects = {
+            "pressure_delta": 6,
+            "stability_delta": -8,
+            "add_attacks": ["persistence"]
+        }
+        return self._make_action("establish_persistence", "Resident process registered.", effects)
+
 
 
 class MentorAI:
     """Mentor AI that only asks questions, never gives answers"""
-    
+
     def __init__(self):
         self.enabled = False
         self.question_history: List[Dict[str, Any]] = []
-    
+
     def enable(self):
         """Enable mentor (only on user request)"""
         self.enabled = True
-    
+
     def disable(self):
         """Disable mentor"""
         self.enabled = False
-    
-    def analyze_situation(self, state: SystemState, last_action: Optional[Action] = None, 
+
+    def analyze_situation(self, state: SystemState, last_action: Optional[Action] = None,
                          action_history: List[Dict[str, Any]] = None,
                          available_actions: List[Action] = None,
                          hypotheses: List[Hypothesis] = None) -> Dict[str, Any]:
@@ -309,308 +598,200 @@ class MentorAI:
             "observations": [],
             "next_steps": []
         }
-        
-        # Analyze current situation
+
         situation_parts = []
-        
-        # Risk analysis
-        if state.risk_score > 70:
-            situation_parts.append("High risk detected")
-            guidance["questions"].append(
-                "What actions have led to this elevated risk level? Are there patterns you notice?"
-            )
-        elif state.risk_score > 40:
-            situation_parts.append("Moderate risk present")
-            guidance["questions"].append(
-                "What factors are contributing to the current risk level?"
-            )
-        else:
-            situation_parts.append("Low risk state")
-            guidance["questions"].append(
-                "What strategies are keeping the risk low? Are there hidden threats?"
-            )
-        
-        # Detection analysis
-        if state.detection_level > 70:
-            situation_parts.append("High detection level")
-            guidance["questions"].append(
-                "The system is highly alert. What might have triggered this? How can you operate under increased scrutiny?"
-            )
-            guidance["concepts"].append("Stealth and evasion techniques")
-        elif state.detection_level > 40:
-            situation_parts.append("Moderate detection")
-            guidance["questions"].append(
-                "Detection is increasing. What patterns in your actions might be causing this?"
-            )
-        else:
-            situation_parts.append("Low detection")
-            guidance["questions"].append(
-                "You're operating under the radar. Is this sustainable? What might change?"
-            )
-        
-        # Integrity analysis
-        if state.integrity < 50:
-            situation_parts.append("System integrity compromised")
-            guidance["questions"].append(
-                "System integrity is low. What happened? Can this be recovered, and should it be?"
-            )
-            guidance["concepts"].append("System recovery and incident response")
-        elif state.integrity < 80:
-            situation_parts.append("System integrity degraded")
-            guidance["questions"].append(
-                "System integrity is declining. What's causing this degradation?"
-            )
-        
-        # Vulnerability analysis
-        exploited_vulns = [k for k, v in state.vulnerabilities.items() if v.get("exploited")]
-        detected_vulns = [k for k, v in state.vulnerabilities.items() if v.get("detected")]
-        active_vulns = [k for k, v in state.vulnerabilities.items() if v.get("active") and not v.get("exploited")]
-        
-        if exploited_vulns:
-            situation_parts.append(f"{len(exploited_vulns)} vulnerability(ies) exploited")
-            guidance["questions"].append(
-                f"You've exploited {len(exploited_vulns)} vulnerability(ies). What are the implications? How do they interact?"
-            )
-        
-        if detected_vulns:
-            situation_parts.append(f"{len(detected_vulns)} vulnerability(ies) detected")
+        active_conditions = [k for k, v in state.system_conditions.items() if v]
+        if active_conditions:
+            situation_parts.append("System posture tightening")
             guidance["observations"].append(
-                f"System has detected {len(detected_vulns)} vulnerability(ies). This changes the threat landscape."
+                "Behavioral changes are active: " + ", ".join(active_conditions)
             )
-        
-        if active_vulns:
             guidance["questions"].append(
-                f"There are {len(active_vulns)} active vulnerability(ies) you haven't exploited. What's your strategy?"
+                "Which of your recent actions likely triggered these behavioral shifts?"
             )
-        
-        # Action history analysis
+
+        if state.stability < 60:
+            situation_parts.append("Stability degraded")
+            guidance["questions"].append(
+                "Stability is drifting. What chain of actions caused the degradation?"
+            )
+
+        monitored_components = [k for k, v in state.system_components.items() if v.get("monitoring")]
+        hardened_components = [k for k, v in state.system_components.items() if v.get("hardened")]
+        if monitored_components:
+            guidance["observations"].append(
+                f"Monitoring active on {', '.join(monitored_components)}."
+            )
+            guidance["questions"].append(
+                "How does active monitoring change your next step?"
+            )
+
+        if hardened_components:
+            guidance["observations"].append(
+                f"Hardening observed on {', '.join(hardened_components)}."
+            )
+            guidance["questions"].append(
+                "What alternative approach avoids the hardened surface?"
+            )
+
         if action_history and len(action_history) > 0:
             recent_actions = action_history[-5:]
             action_types = [a.get("action_id", "").split("_")[0] for a in recent_actions]
-            
+
             if "probe" in action_types or "inspect" in action_types:
                 guidance["observations"].append(
-                    "You've been probing and inspecting. What have you learned? What patterns emerge?"
+                    "You've been probing and inspecting. Patterns should be forming."
                 )
                 guidance["questions"].append(
-                    "Based on your probing, what hypotheses can you form about the system's behavior?"
+                    "Based on your probing, what hypothesis can you test next?"
                 )
-            
+
             if "escalate" in action_types:
                 guidance["observations"].append(
-                    "You've escalated privileges or context. What new capabilities does this give you?"
+                    "You've escalated context. New behaviors should be visible."
                 )
                 guidance["questions"].append(
-                    "With escalated access, what new attack surfaces or defense options are available?"
+                    "How does the system react when you push execution boundaries?"
                 )
-            
+
             if any(a.get("actually_failed") for a in recent_actions):
                 guidance["anomalies"].append(
-                    "Some of your recent actions appeared successful but later failed. What might explain this discrepancy?"
+                    "Some recent actions appeared successful but later failed."
                 )
                 guidance["questions"].append(
-                    "When actions fail unexpectedly, what does that tell you about the system's true state?"
+                    "When a result flips later, what does that say about hidden adaptation?"
                 )
-        
-        # Contradiction analysis
+
         if state.contradictions:
             latest = state.contradictions[-1]
             guidance["inconsistencies"].append(
-                f"Your assumptions have been contradicted: {latest.get('description', 'Something unexpected happened')}"
+                f"Your assumptions have been contradicted: {latest.get('description', 'Unexpected behavior observed')}"
             )
             guidance["questions"].append(
-                "When your assumptions are wrong, how do you revise your mental model? What new information do you need?"
+                "When your assumptions are wrong, how do you revise your mental model?"
             )
-        
-        # AI opponent analysis
-        if state.ai_aggressiveness > 0:
-            situation_parts.append("AI opponent active")
-            guidance["observations"].append(
-                f"AI opponent aggressiveness is at {state.ai_aggressiveness}%. The opponent is actively responding."
-            )
-            guidance["questions"].append(
-                "How is the AI opponent adapting to your actions? What patterns can you identify in their responses?"
-            )
-        
-        # Component analysis
-        monitored_components = [k for k, v in state.system_components.items() if v.get("monitoring")]
-        hardened_components = [k for k, v in state.system_components.items() if v.get("hardened")]
-        
-        if monitored_components:
-            guidance["observations"].append(
-                f"Components {', '.join(monitored_components)} are being monitored. This affects your operational security."
-            )
-            guidance["questions"].append(
-                "How does active monitoring change your approach? What actions become riskier?"
-            )
-        
-        if hardened_components:
-            guidance["observations"].append(
-                f"Components {', '.join(hardened_components)} have been hardened. Some attack vectors may be closed."
-            )
-            guidance["questions"].append(
-                "With hardened components, what alternative approaches might work?"
-            )
-        
-        # Build situation summary
+
         if situation_parts:
             guidance["situation_summary"] = "Current situation: " + ", ".join(situation_parts) + "."
         else:
             guidance["situation_summary"] = "System is in initial state. Begin by forming hypotheses about the system's behavior."
-        
-        # Add strategic questions based on mode/context
-        if state.detection_level > state.risk_score:
-            guidance["questions"].append(
-                "Detection is higher than risk. What does this tell you about the system's priorities?"
-            )
-        
+
         if len(state.user_assumptions) > 0:
             untested = [a for a in state.user_assumptions if a.get("validated") is None]
             if untested:
                 guidance["questions"].append(
                     f"You have {len(untested)} untested assumption(s). How can you validate them?"
                 )
-        
-        # NEXT STEPS GUIDANCE - What should you do now?
+
         guidance["next_steps"] = self._suggest_next_steps(
             state, last_action, action_history, available_actions, hypotheses
         )
-        
+
         return guidance
-    
+
     def _suggest_next_steps(self, state: SystemState, last_action: Optional[Action],
-                           action_history: List[Dict[str, Any]], 
+                           action_history: List[Dict[str, Any]],
                            available_actions: List[Action],
                            hypotheses: List[Hypothesis]) -> List[str]:
         """Suggest what to do next based on current situation"""
         next_steps = []
-        
+
         if not available_actions:
             return ["No actions available. Check if you need to form and validate a hypothesis first."]
-        
-        # Check if there are untested hypotheses
+
         if hypotheses:
             untested_hypotheses = [h for h in hypotheses if not h.tested]
             if untested_hypotheses:
                 next_steps.append(
-                    f"💡 You have {len(untested_hypotheses)} untested hypothesis(ies). Consider testing one to unlock new actions."
+                    f"You have {len(untested_hypotheses)} untested hypothesis(ies). Test one to unlock new actions."
                 )
-        
-        # Check available actions
+
         available = [a for a in available_actions if a.available]
         locked = [a for a in available_actions if not a.available]
-        
+
         if not available:
             if locked:
                 next_steps.append(
-                    f"🔒 You have {len(locked)} action(s) locked. Form and validate the required hypothesis to unlock them."
+                    f"You have {len(locked)} action(s) locked. Form and validate the required hypothesis to unlock them."
                 )
             return next_steps if next_steps else ["No actions available at this time."]
-        
-        # Analyze what actions are available
-        action_types = {}
+
+        action_types: Dict[str, List[Action]] = {}
         for action in available:
             action_type = action.type if hasattr(action, 'type') else 'unknown'
             if action_type not in action_types:
                 action_types[action_type] = []
             action_types[action_type].append(action)
-        
-        # Suggest based on current state
+
         if not action_history or len(action_history) == 0:
-            # Just started - suggest probing
             if 'probe' in action_types or 'inspect' in action_types:
                 next_steps.append(
-                    "🎯 Start by probing or inspecting the system to gather information and form hypotheses."
+                    "Start by probing or inspecting to gather information and form hypotheses."
                 )
             else:
                 next_steps.append(
-                    "🎯 Begin by exploring available actions to understand the system's behavior."
+                    "Begin by exploring available actions to understand system behavior."
                 )
         else:
-            # Analyze recent actions
             recent_types = [a.get("action_id", "").split("_")[0] for a in action_history[-3:]]
-            
-            # If only probing, suggest next step
+
             if all(t in ['probe', 'inspect'] for t in recent_types):
                 if 'escalate' in action_types:
                     next_steps.append(
-                        "⚡ You've gathered enough information. Consider escalating your approach to test your hypotheses."
+                        "You've gathered enough information. Consider escalating your approach to test hypotheses."
                     )
                 elif hypotheses and any(not h.tested for h in hypotheses):
                     next_steps.append(
-                        "🧪 Based on your probing, test a hypothesis to unlock more advanced actions."
+                        "Based on your probing, test a hypothesis to unlock more advanced actions."
                     )
-            
-            # If escalated, suggest what's next
+
             if 'escalate' in recent_types:
-                if state.detection_level > 50:
+                if state.pressure > 60:
                     next_steps.append(
-                        "⚠️ Detection is high. Consider isolating components or restricting execution to reduce risk."
+                        "System pressure is rising. Consider isolating components or restricting execution."
                     )
                 elif 'isolate' in action_types or 'restrict' in action_types:
                     next_steps.append(
-                        "🛡️ You've escalated. Now consider defensive actions like isolating components or restricting execution."
+                        "You've escalated. Consider defensive actions like isolating components or restricting execution."
                     )
-            
-            # If detection is high, suggest defensive actions
-            if state.detection_level > 60:
+
+            if state.pressure > 70:
                 if 'isolate' in action_types:
                     next_steps.append(
-                        "🔒 High detection detected. Consider isolating compromised components to contain the threat."
+                        "System pressure is high. Isolate components to contain the threat."
                     )
                 elif 'restrict' in action_types:
                     next_steps.append(
-                        "🚫 Detection is critical. Restrict execution capabilities to limit the attack surface."
+                        "Pressure is critical. Restrict execution capabilities to limit the surface."
                     )
                 elif 'monitor' in action_types:
                     next_steps.append(
-                        "👁️ Detection is high. Enable monitoring to understand what's happening in the system."
+                        "Pressure is high. Enable monitoring to understand system reactions."
                     )
-            
-            # If risk is high, suggest mitigation
-            if state.risk_score > 70:
+
+            if state.stability < 50:
                 if 'isolate' in action_types:
                     next_steps.append(
-                        "⚠️ Risk is critical. Isolate vulnerable components immediately to prevent further damage."
+                        "Stability is compromised. Isolate affected components to prevent spread."
                     )
                 elif 'restrict' in action_types:
                     next_steps.append(
-                        "🚨 High risk detected. Restrict system capabilities to reduce the attack surface."
+                        "Stability is low. Restrict execution to prevent further degradation."
                     )
-            
-            # If integrity is low, suggest recovery
-            if state.integrity < 50:
-                if 'isolate' in action_types:
-                    next_steps.append(
-                        "💔 System integrity is compromised. Isolate affected components to prevent spread."
-                    )
-                elif 'restrict' in action_types:
-                    next_steps.append(
-                        "🔧 System integrity is low. Restrict execution to prevent further degradation."
-                    )
-            
-            # If vulnerabilities are exploited but not detected
-            exploited = [k for k, v in state.vulnerabilities.items() if v.get("exploited")]
-            if exploited and state.detection_level < 30:
-                next_steps.append(
-                    f"🎯 You've exploited {len(exploited)} vulnerability(ies) without detection. Consider your next move carefully."
-                )
-        
-        # If no specific guidance, provide general next step
+
         if not next_steps:
             if 'probe' in action_types:
-                next_steps.append("🔍 Continue probing to gather more information about the system.")
+                next_steps.append("Continue probing to gather more information about the system.")
             elif 'inspect' in action_types:
-                next_steps.append("🔎 Inspect system components to understand their behavior.")
+                next_steps.append("Inspect system components to understand their behavior.")
             elif available:
-                next_steps.append(f"✅ You have {len(available)} available action(s). Consider your strategy and proceed.")
-        
+                next_steps.append(f"You have {len(available)} available action(s). Consider your strategy and proceed.")
+
         return next_steps
-    
-    def get_guidance(self, state: SystemState, last_action: Optional[Action] = None, 
+
+    def get_guidance(self, state: SystemState, last_action: Optional[Action] = None,
                     action_history: List[Dict[str, Any]] = None,
                     available_actions: List[Action] = None,
                     hypotheses: List[Hypothesis] = None) -> Optional[Dict[str, Any]]:
         """Get mentor guidance (only questions, never answers)"""
-        # Always provide guidance when requested (analyze current situation)
         return self.analyze_situation(state, last_action, action_history, available_actions, hypotheses)

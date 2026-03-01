@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Terminal, Server, Globe, Lock, Play, Target, ShieldCheck, Code, Settings } from 'lucide-react';
+import { Shield, Sword, GraduationCap, Globe, Server, Terminal, Lock, Play, Target, ShieldCheck, Code, Settings, BookOpen } from 'lucide-react';
 import { LearningMode } from '../../types/game';
 
 export const MissionSelect = () => {
@@ -34,7 +34,7 @@ export const MissionSelect = () => {
     {
       id: 'playground' as LearningMode,
       title: 'Playground Mode',
-      description: 'No fixed objectives. Full freedom. Multiple vulnerabilities active. Optional AI opponent. Break the system, recover manually.',
+      description: 'No fixed objectives. Full freedom. Multiple unstable surfaces active. Optional AI opponent. Break the system, recover manually.',
       icon: <Code className="w-6 h-6 text-purple-400" />,
       color: 'purple'
     }
@@ -47,7 +47,7 @@ export const MissionSelect = () => {
       category: 'Web Exploitation',
       difficulty: 'Recruit',
       icon: <Globe className="w-6 h-6 text-blue-400" />,
-      desc: 'Legacy admin portal with input validation flaws. Multiple interacting vulnerabilities.'
+      desc: 'Legacy admin portal with brittle input handling. Multiple interacting fault lines.'
     },
     {
       id: 'linux_privesc',
@@ -78,11 +78,13 @@ export const MissionSelect = () => {
 
   const handleStart = () => {
     if (selectedMode && selectedScenario) {
+      const scenario = scenarios.find(s => s.id === selectedScenario);
       navigate('/game', {
         state: {
           mode: selectedMode,
           scenarioId: selectedScenario,
-          difficulty
+          difficulty,
+          scenarioName: scenario?.title ?? 'Operation: Broken Trust'
         }
       });
     }
@@ -105,6 +107,20 @@ export const MissionSelect = () => {
           </p>
         </div>
 
+        {/* Learning Center Button */}
+        <div className="mb-12 text-center">
+          <button
+            onClick={() => navigate('/learn')}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black py-4 px-8 rounded-lg flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-lg shadow-lg hover:shadow-blue-500/50 mx-auto"
+          >
+            <BookOpen className="w-6 h-6" />
+            Learning Center
+          </button>
+          <p className="text-sm text-slate-500 mt-3">
+            Start with interactive lessons to learn fundamentals, then apply them in operations
+          </p>
+        </div>
+
         {/* Learning Mode Selection */}
         <div className="mb-12">
           <h2 className="text-2xl font-bold text-white mb-6 text-center uppercase tracking-widest">
@@ -115,11 +131,10 @@ export const MissionSelect = () => {
               <button
                 key={mode.id}
                 onClick={() => handleModeSelect(mode.id)}
-                className={`p-6 rounded-lg border text-left transition-all ${
-                  selectedMode === mode.id
+                className={`p-6 rounded-lg border text-left transition-all ${selectedMode === mode.id
                     ? `border-${mode.color}-500 bg-${mode.color}-900/20`
                     : 'border-slate-800 bg-[#111] hover:border-slate-700'
-                }`}
+                  }`}
               >
                 <div className="flex items-start gap-4 mb-3">
                   <div className={`p-3 rounded bg-slate-900`}>{mode.icon}</div>
@@ -160,11 +175,10 @@ export const MissionSelect = () => {
                 <button
                   key={scenario.id}
                   onClick={() => handleScenarioSelect(scenario.id)}
-                  className={`p-6 rounded-lg border text-left transition-all ${
-                    selectedScenario === scenario.id
+                  className={`p-6 rounded-lg border text-left transition-all ${selectedScenario === scenario.id
                       ? 'border-emerald-500 bg-emerald-900/20'
                       : 'border-slate-800 bg-[#111] hover:border-slate-700'
-                  }`}
+                    }`}
                 >
                   <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-slate-900 rounded">{scenario.icon}</div>

@@ -1,15 +1,14 @@
 import React, { forwardRef } from 'react';
-import { Log, SystemComponent, Vulnerability } from '../../types/game';
-import { Server, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Log, SystemComponent } from '../../types/game';
+import { Server, AlertCircle, CheckCircle, Activity } from 'lucide-react';
 
 interface SystemViewProps {
   logs: Log[];
   components: Record<string, SystemComponent>;
-  vulnerabilities: Record<string, Vulnerability>;
 }
 
 export const SystemView = forwardRef<HTMLDivElement, SystemViewProps>(
-  ({ logs, components, vulnerabilities }, ref) => {
+  ({ logs, components }, ref) => {
     return (
       <div className="h-full flex flex-col pt-8">
         {/* System Components Status */}
@@ -27,7 +26,7 @@ export const SystemView = forwardRef<HTMLDivElement, SystemViewProps>(
                   <Server className="w-3 h-3 text-slate-500" />
                   <span className="text-xs font-bold text-slate-300">{id}</span>
                 </div>
-                <div className="flex items-center gap-2 text-[10px]">
+                <div className="flex flex-wrap items-center gap-2 text-[10px]">
                   {comp.monitoring && (
                     <span className="text-blue-400 flex items-center gap-1">
                       <AlertCircle className="w-2 h-2" /> Monitoring
@@ -38,38 +37,14 @@ export const SystemView = forwardRef<HTMLDivElement, SystemViewProps>(
                       <CheckCircle className="w-2 h-2" /> Hardened
                     </span>
                   )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Vulnerabilities Status */}
-        <div className="px-6 py-4 border-b border-slate-800">
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
-            Vulnerabilities
-          </div>
-          <div className="space-y-2">
-            {Object.entries(vulnerabilities).map(([id, vuln]) => (
-              <div
-                key={id}
-                className="flex items-center justify-between bg-slate-900/30 rounded p-2"
-              >
-                <span className="text-xs text-slate-400 font-mono">{id}</span>
-                <div className="flex items-center gap-2">
-                  {vuln.exploited && (
-                    <span className="text-red-400 text-[10px] flex items-center gap-1">
-                      <XCircle className="w-2 h-2" /> Exploited
+                  {(comp.signals || []).map((signal) => (
+                    <span
+                      key={`${id}-${signal}`}
+                      className="text-amber-400 flex items-center gap-1"
+                    >
+                      <Activity className="w-2 h-2" /> {signal}
                     </span>
-                  )}
-                  {vuln.detected && (
-                    <span className="text-amber-400 text-[10px] flex items-center gap-1">
-                      <AlertCircle className="w-2 h-2" /> Detected
-                    </span>
-                  )}
-                  {vuln.active && !vuln.exploited && !vuln.detected && (
-                    <span className="text-slate-600 text-[10px]">Active</span>
-                  )}
+                  ))}
                 </div>
               </div>
             ))}

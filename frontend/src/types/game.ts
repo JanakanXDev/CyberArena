@@ -25,18 +25,14 @@ export interface Hypothesis {
   description: string;
   tested: boolean;
   validated: boolean | null;
+  explanation?: string;
 }
 
 export interface SystemComponent {
   status: string;
   monitoring: boolean;
   hardened: boolean;
-}
-
-export interface Vulnerability {
-  active: boolean;
-  exploited: boolean;
-  detected: boolean;
+  signals?: string[];
 }
 
 export interface MentorGuidance {
@@ -55,26 +51,24 @@ export interface GameState {
   scenarioId: string;
   scenarioName: string;
   turnCount: number;
-  
-  // State Panel Metrics
-  riskScore: number;
-  detectionLevel: number;
-  integrity: number;
-  aiAggressiveness: number;
-  
+
+  // Core metrics
+  pressure: number;
+  stability: number;
+
   // Actions (hypothesis-based)
   availableActions: Action[];
-  
+
   // Hypotheses
   hypotheses: Hypothesis[];
-  
+
   // Logs (for System View and Event Log)
   logs: Log[];
-  
+
   // System View Data
   systemComponents: Record<string, SystemComponent>;
-  vulnerabilities: Record<string, Vulnerability>;
-  
+  systemConditions?: Record<string, boolean>;
+
   // Learning Data
   userAssumptions: Array<{
     id: string;
@@ -84,6 +78,7 @@ export interface GameState {
   }>;
   actionHistory: Array<{
     action_id: string;
+    action_label: string;
     turn: number;
     timestamp: string;
     actually_failed?: boolean;
@@ -93,11 +88,34 @@ export interface GameState {
     description: string;
     turn: number;
   }>;
-  
+
   // Mentor Guidance
   mentorGuidance?: MentorGuidance;
-  
-  // No phase shown, no completion flags (continuous simulation)
-  isGameOver: boolean;
+
+  // Session state
+  sessionStatus?: 'active' | 'collapsed';
+  collapseReason?: string;
+  collapseMessage?: string;
+  reflectionSummary?: {
+    initial_assumptions: Array<{ label: string; validated: boolean | null }>;
+    what_broke: string[];
+    system_adaptations: string[];
+    what_finally_worked: string[];
+    what_remains_unsafe: string[];
+  };
+  scenarioState?: string;
   missionComplete: boolean;
+  strategicDebrief?: StrategicDebrief;
+}
+
+export interface StrategicDebrief {
+  outcome: string;
+  turns: number;
+  final_pressure: number;
+  final_stability: number;
+  final_ai_entropy: number;
+  ai_end_posture: string;
+  hypotheses_validated: number;
+  hypotheses_invalidated: number;
+  summary: string;
 }

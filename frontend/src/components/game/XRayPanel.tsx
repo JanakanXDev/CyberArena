@@ -51,7 +51,7 @@ export const XRayPanel: React.FC<XRayPanelProps> = ({ trace }) => {
     if (n.includes('player') || n.includes('attacker')) return <User className="w-5 h-5 text-emerald-400" />;
     if (n.includes('firewall')) return <ShieldCheck className="w-5 h-5 text-amber-400" />;
     if (n.includes('server') || n.includes('http')) return <Globe className="w-5 h-5 text-blue-400" />;
-    if (n.includes('database') || n.includes('sql')) return <Database className="w-5 h-5 text-purple-400" />;
+    if (n.includes('database')) return <Database className="w-5 h-5 text-purple-400" />;
     if (n.includes('lock') || n.includes('auth')) return <Lock className="w-5 h-5 text-red-400" />;
     return <Server className="w-5 h-5 text-slate-400" />;
   };

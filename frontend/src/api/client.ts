@@ -12,7 +12,7 @@ export const api = {
   ): Promise<GameState> => {
     console.log('API: startGame called with:', { mode, difficulty, scenarioId, stageIndex });
     console.log('API: Making request to:', `${API_URL}/start`);
-    
+
     try {
       const response = await fetch(`${API_URL}/start`, {
         method: 'POST',
@@ -24,15 +24,15 @@ export const api = {
           stageIndex
         }),
       });
-      
+
       console.log('API: Response status:', response.status, response.statusText);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('API: Error response:', errorText);
         throw new Error(`Failed to start session: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       console.log('API: Response data received:', data);
       return data;
@@ -45,7 +45,7 @@ export const api = {
   // SEND ACTION: Send action, hypothesis, or command
   sendAction: async (actionIdOrCommand: string): Promise<GameState> => {
     console.log('API: sendAction called with:', actionIdOrCommand);
-    
+
     try {
       const response = await fetch(`${API_URL}/action`, {
         method: 'POST',
@@ -54,15 +54,15 @@ export const api = {
           actionId: actionIdOrCommand
         }),
       });
-      
+
       console.log('API: Action response status:', response.status);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('API: Action error response:', errorText);
         throw new Error(`Action failed: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       console.log('API: Action response data:', data);
       return data;
@@ -78,7 +78,7 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
-    
+
     if (!response.ok) throw new Error('Failed to toggle mentor');
     return response.json();
   },
@@ -89,7 +89,7 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
-    
+
     if (!response.ok) throw new Error('Failed to get mentor analysis');
     return response.json();
   },
@@ -100,8 +100,20 @@ export const api = {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
-    
+
     if (!response.ok) throw new Error('Failed to get learning data');
+    return response.json();
+  },
+
+  // MENTOR CHAT: Send a message to the AI mentor with simulation context
+  mentorChat: async (message: string): Promise<{ reply: string }> => {
+    const response = await fetch(`${API_URL}/mentor/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+
+    if (!response.ok) throw new Error('Failed to get mentor response');
     return response.json();
   }
 };

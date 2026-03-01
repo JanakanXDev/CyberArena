@@ -9,8 +9,8 @@ export const LearningSelect = () => {
   // 1. DEFINE LEVELS (Must match IDs in backend/scenarios.py)
   const levels = [
     { id: "linux_basics_1", title: "Linux Fundamentals", category: "Basics" },
-    { id: "web_sqli", title: "Web Exploitation", category: "Web Security" },
-    { id: "net_ftp", title: "Network Hacking", category: "Network" }
+    { id: "web_surface_logic", title: "Web Surface Logic", category: "Web Security" },
+    { id: "net_surface_mapping", title: "Network Surface Mapping", category: "Network" }
   ];
 
   // 2. SET DEFAULT UNLOCKED STATE

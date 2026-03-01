@@ -4,7 +4,7 @@ import { Shield, Sword, Globe, Server, Home, Play } from 'lucide-react';
 
 export const PlaygroundSetup = () => {
   const navigate = useNavigate();
-  
+
   const [selectedEnv, setSelectedEnv] = useState('sandbox_corp');
   const [difficulty, setDifficulty] = useState('medium');
 
@@ -15,13 +15,14 @@ export const PlaygroundSetup = () => {
   ];
 
   const handleStart = () => {
-    navigate('/game', { 
-      state: { 
-        mode: 'sandbox', 
-        scenarioId: selectedEnv, // Pass the specific sandbox ID
+    const env = environments.find(e => e.id === selectedEnv);
+    navigate('/game', {
+      state: {
+        mode: 'playground',
+        scenarioId: 'input_trust_failures',
         difficulty: difficulty,
-        inputMode: 'manual' // Sandbox is always manual
-      } 
+        scenarioName: env?.name ?? 'Cyber Playground'
+      }
     });
   };
 
@@ -39,13 +40,13 @@ export const PlaygroundSetup = () => {
             <h2 className="text-slate-400 text-sm uppercase font-bold tracking-widest mb-4">Select Target Environment</h2>
             <div className="grid grid-cols-1 gap-4">
               {environments.map((env) => (
-                <div 
+                <div
                   key={env.id}
                   onClick={() => setSelectedEnv(env.id)}
                   className={`
                     p-6 rounded-xl border cursor-pointer transition-all flex items-center gap-6
-                    ${selectedEnv === env.id 
-                      ? 'bg-slate-800 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]' 
+                    ${selectedEnv === env.id
+                      ? 'bg-slate-800 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.1)]'
                       : 'bg-slate-900/50 border-slate-800 hover:bg-slate-800'}
                   `}
                 >
@@ -70,7 +71,7 @@ export const PlaygroundSetup = () => {
               <h2 className="text-slate-400 text-sm uppercase font-bold tracking-widest mb-4">AI Sensitivity</h2>
               <div className="space-y-2">
                 {['easy', 'medium', 'hard'].map((level) => (
-                  <button 
+                  <button
                     key={level}
                     onClick={() => setDifficulty(level)}
                     className={`w-full p-3 rounded capitalize text-left font-bold transition-all ${difficulty === level ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500 hover:text-white'}`}
@@ -82,13 +83,13 @@ export const PlaygroundSetup = () => {
             </div>
 
             {/* LAUNCH BUTTON */}
-            <button 
+            <button
               onClick={handleStart}
               className="w-full py-6 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-black text-xl rounded-xl shadow-2xl shadow-emerald-900/20 flex items-center justify-center gap-3 transition-transform hover:scale-[1.02]"
             >
               INITIALIZE LINK <Play className="w-6 h-6 fill-current" />
             </button>
-            
+
             <button onClick={() => navigate('/')} className="w-full text-center text-slate-600 hover:text-slate-400 text-sm">
               Cancel Deployment
             </button>

@@ -1,7 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { MissionSelect } from './components/pages/MissionSelect'; // <--- NEW IMPORT
+import { MissionSelect } from './components/pages/MissionSelect';
 import { GameSession } from './components/game/GameSession';
+import { LearningCenter } from './components/pages/LearningCenter';
 
 const App: React.FC = () => {
   return (
@@ -11,8 +12,8 @@ const App: React.FC = () => {
           {/* Default Route: Show Mission Selection */}
           <Route path="/" element={<MissionSelect />} /> 
           
-          {/* Old /learn route can also redirect to home now */}
-          <Route path="/learn" element={<Navigate to="/" replace />} />
+          {/* Learning Center */}
+          <Route path="/learn" element={<LearningCenter />} />
 
           {/* Game Route */}
           <Route path="/game" element={<GameSession />} />

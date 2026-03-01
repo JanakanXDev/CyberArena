@@ -1,11 +1,13 @@
 import React, { forwardRef } from 'react';
 import { Log } from '../../types/game';
 import { ArrowRight, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
+import { JargonText } from './JargonText';
 
 interface EventLogProps {
   logs: Log[];
   actionHistory: Array<{
     action_id: string;
+    action_label?: string;
     turn: number;
     timestamp: string;
     actually_failed?: boolean;
@@ -42,17 +44,16 @@ export const EventLog = forwardRef<HTMLDivElement, EventLogProps>(
                   <span className="text-slate-600 text-[10px]">{log.source}</span>
                 </div>
                 <div
-                  className={`text-xs ${
-                    log.type === 'error'
-                      ? 'text-red-400'
-                      : log.type === 'warning'
+                  className={`text-xs ${log.type === 'error'
+                    ? 'text-red-400'
+                    : log.type === 'warning'
                       ? 'text-amber-400'
                       : log.type === 'success'
-                      ? 'text-emerald-400'
-                      : 'text-slate-300'
-                  }`}
+                        ? 'text-emerald-400'
+                        : 'text-slate-300'
+                    }`}
                 >
-                  {log.message}
+                  {log.message ? <JargonText text={log.message} maxHighlights={1} /> : null}
                 </div>
               </div>
             </div>
@@ -71,7 +72,7 @@ export const EventLog = forwardRef<HTMLDivElement, EventLogProps>(
                     className="flex items-center gap-2 text-xs text-slate-400"
                   >
                     <ArrowRight className="w-3 h-3 text-slate-600" />
-                    <span className="font-mono">{action.action_id}</span>
+                    <span className="font-mono">{action.action_label || action.action_id}</span>
                     {action.actually_failed && (
                       <span className="text-red-400 text-[10px]">(Failed)</span>
                     )}

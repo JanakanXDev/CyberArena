@@ -4,7 +4,7 @@ DEFAULT_FS = {
     "files": ["todo.txt", "instructions.txt"],
     "content": {
         "todo.txt": "1. Scan network\n2. Get coffee",
-        "instructions.txt": "Follow the Cyber Kill Chain: Recon -> Enum -> Exploit."
+        "instructions.txt": "Follow the cycle: Observe -> Hypothesize -> Test."
     }
 }
 
@@ -37,7 +37,7 @@ class TerminalEngine:
             return self.current_dir
         
         elif base == "help":
-            return "Available tools: nmap, gobuster, sqlmap, hydra, nc, ssh, ping, ls, cat..."
+            return "Available tools: map, dirprobe, authprobe, tunnel, ping, ls, cat..."
         
         elif base == "clear":
             return "CLEAR_LOGS" # This string is caught by engine.py to clear the log array
@@ -60,7 +60,7 @@ class TerminalEngine:
             return f"PING {target} (127.0.0.1): 56 data bytes\n64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=0.1 ms"
         
         if tool == "sqlmap": 
-            return "[*] testing connection... done\n[+] heuristics detected: SQL injection\n[+] dumped table 'users': admin, user1"
+            return "[*] testing connection... done\n[+] heuristics detected: decision-path influence\n[+] dumped table 'users': admin, user1"
         
         if tool == "hydra": 
             return "[DATA] attacking target ftp://10.10.10.5\n[STATUS] 16.00 tries/min\n[DATA] login: admin   password: password123"

@@ -5,7 +5,7 @@ Integrates simulation engine, AI systems, and learning analytics
 
 import datetime
 import traceback
-from simulation_engine import SimulationEngine, LearningMode, Hypothesis, Phase
+from simulation_engine import SimulationEngine, LearningMode, Hypothesis, Phase, Action
 from ai_systems import OpponentAI, MentorAI, AIPersona, AIDifficulty
 from scenario_system import get_scenario_config
 from learning_analytics import LearningAnalytics, LearningSession
@@ -44,14 +44,15 @@ def _mode_string_to_enum(mode_str: str) -> LearningMode:
     return mode_map.get(mode_str, LearningMode.GUIDED_SIMULATION)
 
 
-def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) -> dict:
+
+def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai_actions: list = None) -> dict:
     """Convert engine state to API response format"""
     state_dict = engine._get_state_dict()
-    
-    # Get logs from system state
+
     logs = []
-    
-    # Initial system log
+    if ai_actions is None:
+        ai_actions = []
+
     if engine.turn_count == 0:
         logs.append(create_log(
             "System",
@@ -67,8 +68,7 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) ->
             "System components operational",
             logs
         ))
-    
-    # System view logs (partial, noisy signals)
+
     for comp_id, comp_data in engine.state.system_components.items():
         if comp_data.get("monitoring"):
             logs.append(create_log(
@@ -78,8 +78,7 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) ->
                 f"Monitoring active on {comp_id}",
                 logs
             ))
-    
-    # Event log (cause-effect traces)
+
     if engine.state.action_history:
         last_action = engine.state.action_history[-1]
         logs.append(create_log(
@@ -89,8 +88,19 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) ->
             f"Action executed: {last_action.get('action_id', 'unknown')}",
             logs
         ))
-    
-    # Delayed consequences triggered
+
+    for ai_action in ai_actions:
+        persona_name = "AI Opponent"
+        if engine.ai_opponent:
+            persona_name = "AI Defender" if engine.ai_opponent.persona == AIPersona.DEFENDER else "AI Attacker"
+        logs.append(create_log(
+            persona_name,
+            "event_log",
+            "warning",
+            ai_action.get("message", "System behavior changed"),
+            logs
+        ))
+
     for dc in engine.delayed_consequences:
         if dc.executed and dc.trigger_turn == engine.turn_count:
             logs.append(create_log(
@@ -100,8 +110,7 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) ->
                 f"Delayed consequence: {dc.description}",
                 logs
             ))
-    
-    # Contradictions
+
     if engine.state.contradictions:
         latest = engine.state.contradictions[-1]
         if latest.get("turn") == engine.turn_count:
@@ -112,27 +121,17 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) ->
                 f"Contradiction detected: {latest.get('description', '')}",
                 logs
             ))
-    
-    # AI opponent activity
-    if engine.ai_opponent:
-        if engine.state.active_defenses:
+
+    for event in engine.state.system_events:
+        if event.get("turn") == engine.turn_count:
             logs.append(create_log(
-                "AI Defender" if engine.ai_opponent.persona == AIPersona.DEFENDER else "AI Attacker",
-                "system_view",
-                "warning",
-                f"AI activity detected: {', '.join(engine.state.active_defenses[-2:])}",
+                "System",
+                "event_log",
+                "warning" if event.get("level") == "warning" else "error" if event.get("level") == "error" else "info",
+                event.get("message", "System behavior changed"),
                 logs
             ))
-        if engine.state.active_attacks:
-            logs.append(create_log(
-                "AI Attacker",
-                "system_view",
-                "error",
-                f"Active attack: {', '.join(engine.state.active_attacks[-2:])}",
-                logs
-            ))
-    
-    # Mentor guidance (if enabled)
+
     mentor_guidance = None
     if mentor and mentor.enabled:
         last_action_obj = None
@@ -140,47 +139,39 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI) ->
             last_action_id = engine.state.action_history[-1].get("action_id")
             last_action_obj = next((a for a in engine.available_actions if a.id == last_action_id), None)
         mentor_guidance = mentor.get_guidance(engine.state, last_action_obj)
-    
-    # Build response
+
     response = {
         "mode": engine.mode.value,
         "scenarioId": engine.scenario_id,
         "scenarioName": _get_scenario_name(engine.scenario_id),
         "turnCount": engine.turn_count,
-        
-        # Metrics (shown in state panel)
-        "riskScore": engine.state.risk_score,
-        "detectionLevel": engine.state.detection_level,
-        "integrity": engine.state.integrity,
-        "aiAggressiveness": engine.state.ai_aggressiveness,
-        
-        # Actions (hypothesis-based, no exploit names)
         "availableActions": state_dict["available_actions"],
-        
-        # Hypotheses
         "hypotheses": state_dict["hypotheses"],
-        
-        # Logs
         "logs": logs,
-        
-        # System state (for system view)
         "systemComponents": state_dict["system_components"],
-        "vulnerabilities": state_dict["vulnerabilities"],
-        
-        # Learning data
+        "systemConditions": state_dict.get("system_conditions", {}),
         "userAssumptions": state_dict["user_assumptions"],
         "actionHistory": state_dict["action_history"],
         "contradictions": state_dict["contradictions"],
-        
-        # Mentor guidance
         "mentorGuidance": mentor_guidance,
-        
-        # No phase shown to user (internal only)
-        # No completion flags (continuous simulation)
-        "isGameOver": False,
-        "missionComplete": False
+        "sessionStatus": state_dict.get("session_status", "active"),
+        "collapseReason": state_dict.get("collapse_reason"),
+        "collapseMessage": state_dict.get("collapse_message"),
+        "aiVisualState": state_dict.get("ai_visual_state"),
+        "missionComplete": state_dict.get("scenario_state") == "victory",
+        "scenarioState": state_dict.get("scenario_state", "active"),
+        "strategicDebrief": state_dict.get("strategic_debrief"),
+        "pressure": state_dict.get("pressure", 0),
+        "stability": state_dict.get("stability", 100)
     }
-    
+
+    if response["sessionStatus"] == "collapsed":
+        response["reflectionSummary"] = current_analytics.generate_reflection_summary(
+            engine.state,
+            engine.hypotheses,
+            engine.state.action_history
+        )
+
     return response
 
 
@@ -222,7 +213,16 @@ def reset_game(mode: str, difficulty: str, scenario_id: str, stage_index: int = 
         session_start_time = datetime.datetime.now()
         
         # Return initial state
-        initial_response = _engine_state_to_api_response(current_engine, current_mentor)
+        initial_response = _engine_state_to_api_response(current_engine, current_mentor, [])
+        
+        # Backward compatibility for out-of-the-box frontend experience
+        available = initial_response.get('availableActions', [])
+        is_only_fallback = len(available) == 1 and available[0].get('id') == "tactical_fallback"
+        
+        if (not available or is_only_fallback) and not initial_response.get('hypotheses'):
+            current_engine.configure_session("attacker", "web_server")
+            initial_response = _engine_state_to_api_response(current_engine, current_mentor, [])
+            
         print(f"Initial state - Actions: {len(initial_response.get('availableActions', []))}, Hypotheses: {len(initial_response.get('hypotheses', []))}")
         print(f"Available action IDs: {[a.get('id') for a in initial_response.get('availableActions', [])]}")
         return initial_response
@@ -233,6 +233,17 @@ def reset_game(mode: str, difficulty: str, scenario_id: str, stage_index: int = 
         raise
 
 
+def configure_session_focus(role: str, component: str):
+    """Configure active simulation session with role and component focus"""
+    global current_engine, current_mentor
+    
+    if not current_engine:
+        raise ValueError("No active simulation to configure.")
+        
+    current_engine.configure_session(role, component)
+    return _engine_state_to_api_response(current_engine, current_mentor, [])
+
+
 def process_action(input_data: str):
     """Process user action or command"""
     global current_engine, current_mentor
@@ -241,6 +252,10 @@ def process_action(input_data: str):
         raise ValueError("No active simulation. Call reset_game first.")
     
     try:
+        if current_engine.state.session_status == "collapsed":
+            return _engine_state_to_api_response(current_engine, current_mentor, [])
+        ai_actions = []
+        ai_intent = None
         # Handle hypothesis testing
         if input_data.startswith("hypothesis:"):
             theory_id = input_data.split(":")[1]
@@ -261,15 +276,15 @@ def process_action(input_data: str):
                     current_engine.add_hypothesis(hypothesis)
             
             if hypothesis:
-                # Validate hypothesis - check against config
+                # Validate hypothesis
                 hyp_config = current_engine._hypotheses_config.get(theory_id)
                 if hyp_config:
-                    validated = hyp_config.get("correct", False)
+                    validated = current_engine.evaluate_hypothesis(theory_id)
                     current_engine.validate_hypothesis(theory_id, validated)
                 else:
                     # If not in config, create from available hypotheses in state
                     state_dict = current_engine._get_state_dict()
-                    hyp_data = next((h for h in state_dict.get("hypotheses", []) 
+                    hyp_data = next((h for h in state_dict.get("hypotheses", [])
                                    if h.get("id") == theory_id), None)
                     if hyp_data:
                         # Create hypothesis object
@@ -281,24 +296,82 @@ def process_action(input_data: str):
                         )
                         current_engine.add_hypothesis(hypothesis)
                         # Try to validate
-                        hyp_config = current_engine._hypotheses_config.get(theory_id)
-                        if hyp_config:
-                            validated = hyp_config.get("correct", False)
-                            current_engine.validate_hypothesis(theory_id, validated)
+                        validated = current_engine.evaluate_hypothesis(theory_id)
+                        current_engine.validate_hypothesis(theory_id, validated)
+                
+                # Always check terminal state after hypothesis validation
+                # (win condition in Guided Simulation is validating all core hypotheses)
+                current_engine._evaluate_terminal_state()
+            
+            # AI loop step 1: evaluate intent (hypothesis test)
+            if current_engine.ai_opponent:
+                label = hypothesis.label if hypothesis else theory_id
+                pseudo_action = Action(
+                    id=f"hypothesis_test:{theory_id}",
+                    label=label,
+                    description="Hypothesis test",
+                    type="hypothesis"
+                )
+                ai_intent = current_engine.ai_opponent.evaluate_intent(
+                    pseudo_action,
+                    hypothesis_id=theory_id,
+                    hypothesis_label=label
+                )
+                # AI loop step 3: choose counter-actions based on updated state
+                ai_actions = current_engine.ai_opponent.react_to_action(
+                    pseudo_action,
+                    current_engine.state,
+                    current_engine.available_actions,
+                    ai_intent,
+                    current_engine.mode
+                )
+                # AI loop step 4: apply counter-actions (observable effects)
+                current_engine.apply_ai_actions(ai_actions)
         
         # Handle commands (for playground/advanced modes)
         elif input_data.startswith("command:"):
             command = input_data.split(":", 1)[1]
             # Process abstract command
-            _process_command(command, current_engine)
+            _, ai_actions = _process_command(command, current_engine)
+            
+            # AI loop for command-based action
+            if current_engine.ai_opponent:
+                last_action_id = None
+                if current_engine.state.action_history:
+                    last_action_id = current_engine.state.action_history[-1].get("action_id")
+                action_obj = next((a for a in current_engine.available_actions if a.id == last_action_id), None)
+                ai_intent = current_engine.ai_opponent.evaluate_intent(action_obj)
+                ai_actions = current_engine.ai_opponent.react_to_action(
+                    action_obj,
+                    current_engine.state,
+                    current_engine.available_actions,
+                    ai_intent,
+                    current_engine.mode
+                )
+                current_engine.apply_ai_actions(ai_actions)
         
         # Handle standard actions
         else:
             print(f"Processing action: {input_data}")
-            current_engine.process_action(input_data)
+            _, ai_actions = current_engine.process_action(input_data)
+            
+            # AI loop step 1: evaluate intent from action
+            if current_engine.ai_opponent:
+                action_obj = next((a for a in current_engine.available_actions if a.id == input_data), None)
+                ai_intent = current_engine.ai_opponent.evaluate_intent(action_obj)
+                # AI loop step 3: choose counter-actions based on updated state
+                ai_actions = current_engine.ai_opponent.react_to_action(
+                    action_obj,
+                    current_engine.state,
+                    current_engine.available_actions,
+                    ai_intent,
+                    current_engine.mode
+                )
+                # AI loop step 4: apply counter-actions (observable effects)
+                current_engine.apply_ai_actions(ai_actions)
         
         # Return updated state
-        updated_response = _engine_state_to_api_response(current_engine, current_mentor)
+        updated_response = _engine_state_to_api_response(current_engine, current_mentor, ai_actions)
         print(f"After action - Actions: {len(updated_response.get('availableActions', []))}, Turn: {updated_response.get('turnCount', 0)}")
         return updated_response
         
@@ -322,7 +395,7 @@ def _process_command(command: str, engine: SimulationEngine):
     }
     
     action_id = command_map.get(command, command)
-    engine.process_action(action_id)
+    return engine.process_action(action_id)
 
 
 def toggle_mentor():
