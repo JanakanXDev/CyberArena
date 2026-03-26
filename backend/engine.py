@@ -93,13 +93,12 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai
         persona_name = "AI Opponent"
         if engine.ai_opponent:
             persona_name = "AI Defender" if engine.ai_opponent.persona == AIPersona.DEFENDER else "AI Attacker"
-        logs.append(create_log(
-            persona_name,
-            "event_log",
-            "warning",
-            ai_action.get("message", "System behavior changed"),
-            logs
-        ))
+        label   = ai_action.get("label", ai_action.get("name", "Unknown move"))
+        sev     = ai_action.get("severity", "medium")
+        sev_tag = {"low": "[LOW]", "medium": "[MED]", "high": "[HIGH]", "critical": "[CRIT]"}.\
+                  get(sev, "")
+        msg = f"{sev_tag} {label}: {ai_action.get('message', ai_action.get('description', 'Adversary action'))}"
+        logs.append(create_log(persona_name, "event_log", "warning", msg, logs))
 
     for dc in engine.delayed_consequences:
         if dc.executed and dc.trigger_turn == engine.turn_count:
@@ -162,7 +161,10 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai
         "scenarioState": state_dict.get("scenario_state", "active"),
         "strategicDebrief": state_dict.get("strategic_debrief"),
         "pressure": state_dict.get("pressure", 0),
-        "stability": state_dict.get("stability", 100)
+        "stability": state_dict.get("stability", 100),
+        # AI last move — primary move shown in the Threat Feed panel
+        "aiLastMove": ai_actions[0] if ai_actions else None,
+        "aiMoveHistory": ai_actions,
     }
 
     if response["sessionStatus"] == "collapsed":
@@ -256,9 +258,101 @@ def process_action(input_data: str):
             return _engine_state_to_api_response(current_engine, current_mentor, [])
         ai_actions = []
         ai_intent = None
-        # Handle hypothesis testing
+        # Handle free-text NLP hypothesis testing (Hybrid Validation Pipeline)
+        if input_data.startswith("hypothesis_text:"):
+            from ai_systems import InputFilter, OllamaValidator, EngineValidator
+            user_text = input_data.split(":", 1)[1].strip()
+
+            # ── Layer 1: Anti-Abuse Input Filter ──
+            filter_result = InputFilter.validate(user_text)
+            if not filter_result["valid"]:
+                current_engine._record_system_event(
+                    f"Input Rejected: {filter_result['reason']}", "warning"
+                )
+                return _engine_state_to_api_response(current_engine, current_mentor, [])
+
+            current_engine._record_system_event(
+                f"Analyzing hypothesis: '{user_text}' via hybrid validation...", "info"
+            )
+
+            # ── Layer 2: LLM Intent Parsing (LLM does NOT decide truth) ──
+            # Build label list without correctness info
+            hypothesis_labels = [
+                {"id": h_id, "label": h_data.get("label", h_id)}
+                for h_id, h_data in current_engine._hypotheses_config.items()
+            ]
+            intent = OllamaValidator.parse_intent(user_text, hypothesis_labels)
+
+            current_engine._record_system_event(
+                f"Intent parsed: target='{intent.get('target')}', "
+                f"claim='{intent.get('claim')}', "
+                f"LLM confidence={intent.get('confidence', 0):.0%}",
+                "info"
+            )
+
+            # ── Layer 3: Engine Truth Validation (Engine is source of truth) ──
+            verdict = EngineValidator.evaluate(
+                intent, current_engine._hypotheses_config, current_engine.state
+            )
+            classification = verdict["classification"]
+            matched_id = verdict.get("matched_hypothesis_id")
+            feedback = verdict.get("contradiction_feedback", "")
+
+            if classification == "correct" and matched_id:
+                current_engine._record_system_event(
+                    f"✓ Hypothesis Validated ({verdict['confidence']:.0%}): {feedback}",
+                    "info"
+                )
+                # Fall through to process as structured hypothesis test
+                input_data = f"hypothesis:{matched_id}"
+            elif classification == "partial":
+                # Partial credit: small penalty, hint provided
+                current_engine.state.pressure = min(100, current_engine.state.pressure + 5)
+                current_engine._record_system_event(
+                    f"⚠ Partial Match ({verdict['confidence']:.0%}): {feedback}",
+                    "warning"
+                )
+                if current_engine.ai_opponent:
+                    import uuid
+                    pseudo_action = Action(
+                        id=f"nlp_partial_{uuid.uuid4()}",
+                        label="Partial NLP Hypothesis",
+                        description=user_text,
+                        type="hypothesis"
+                    )
+                    ai_intent = current_engine.ai_opponent.evaluate_intent(pseudo_action)
+                    ai_actions = current_engine.ai_opponent.react_to_action(
+                        pseudo_action, current_engine.state,
+                        current_engine.available_actions, ai_intent, current_engine.mode
+                    )
+                    current_engine.apply_ai_actions(ai_actions)
+                return _engine_state_to_api_response(current_engine, current_mentor, ai_actions)
+            else:
+                # Incorrect: full penalty
+                current_engine.state.pressure = min(100, current_engine.state.pressure + 10)
+                current_engine._record_system_event(
+                    f"✗ Hypothesis Rejected ({verdict['confidence']:.0%}): {feedback}",
+                    "error"
+                )
+                if current_engine.ai_opponent:
+                    import uuid
+                    pseudo_action = Action(
+                        id=f"nlp_reject_{uuid.uuid4()}",
+                        label="Invalid NLP Hypothesis",
+                        description=user_text,
+                        type="hypothesis"
+                    )
+                    ai_intent = current_engine.ai_opponent.evaluate_intent(pseudo_action)
+                    ai_actions = current_engine.ai_opponent.react_to_action(
+                        pseudo_action, current_engine.state,
+                        current_engine.available_actions, ai_intent, current_engine.mode
+                    )
+                    current_engine.apply_ai_actions(ai_actions)
+                return _engine_state_to_api_response(current_engine, current_mentor, ai_actions)
+
+        # Handle structured hypothesis testing
         if input_data.startswith("hypothesis:"):
-            theory_id = input_data.split(":")[1]
+            theory_id = input_data.split(":", 1)[1]
             
             # Find hypothesis
             hypothesis = next((h for h in current_engine.hypotheses if h.id == theory_id), None)
@@ -276,26 +370,55 @@ def process_action(input_data: str):
                     current_engine.add_hypothesis(hypothesis)
             
             if hypothesis:
-                # Validate hypothesis
+                # Check for evidence-gating
                 hyp_config = current_engine._hypotheses_config.get(theory_id)
-                if hyp_config:
-                    validated = current_engine.evaluate_hypothesis(theory_id)
-                    current_engine.validate_hypothesis(theory_id, validated)
-                else:
-                    # If not in config, create from available hypotheses in state
+                
+                # If not in root config, try state dict
+                if not hyp_config:
                     state_dict = current_engine._get_state_dict()
-                    hyp_data = next((h for h in state_dict.get("hypotheses", [])
+                    hyp_config = next((h for h in state_dict.get("hypotheses", [])
                                    if h.get("id") == theory_id), None)
-                    if hyp_data:
-                        # Create hypothesis object
-                        hypothesis = Hypothesis(
-                            id=hyp_data["id"],
-                            label=hyp_data["label"],
-                            description=hyp_data.get("description", ""),
-                            timestamp=datetime.datetime.now()
-                        )
-                        current_engine.add_hypothesis(hypothesis)
-                        # Try to validate
+                    if hyp_config:
+                        # Ensure hypothesis is officially created
+                        if hypothesis not in current_engine.hypotheses:
+                            hypothesis = Hypothesis(
+                                id=hyp_config["id"],
+                                label=hyp_config["label"],
+                                description=hyp_config.get("description", ""),
+                                timestamp=datetime.datetime.now()
+                            )
+                            current_engine.add_hypothesis(hypothesis)
+                
+                evidence_req = hyp_config.get("evidence_required", []) if hyp_config else []
+                has_evidence = True
+                if evidence_req:
+                    for req_id in evidence_req:
+                        found = False
+                        for hist_action in current_engine.state.action_history:
+                            if hist_action.get("action_id") == req_id and not hist_action.get("actually_failed"):
+                                found = True
+                                break
+                        if not found:
+                            has_evidence = False
+                            break
+
+                if not has_evidence:
+                    # Apply penalty for blind guessing
+                    current_engine.state.pressure = min(100, current_engine.state.pressure + 15)
+                    hypothesis.tested = True
+                    hypothesis.validated = False
+                    
+                    # Update assumption tracking so UI doesn't break
+                    for assumption in current_engine.state.user_assumptions:
+                        if assumption["id"] == theory_id:
+                            assumption["validated"] = False
+                            
+                    current_engine._record_system_event(
+                        "Hypothesis Rejected: Insufficient Evidence. AI capitalized on reckless guess.",
+                        "error"
+                    )
+                else:
+                    if hyp_config:
                         validated = current_engine.evaluate_hypothesis(theory_id)
                         current_engine.validate_hypothesis(theory_id, validated)
                 
@@ -340,15 +463,20 @@ def process_action(input_data: str):
                 if current_engine.state.action_history:
                     last_action_id = current_engine.state.action_history[-1].get("action_id")
                 action_obj = next((a for a in current_engine.available_actions if a.id == last_action_id), None)
-                ai_intent = current_engine.ai_opponent.evaluate_intent(action_obj)
-                ai_actions = current_engine.ai_opponent.react_to_action(
-                    action_obj,
-                    current_engine.state,
-                    current_engine.available_actions,
-                    ai_intent,
-                    current_engine.mode
-                )
-                current_engine.apply_ai_actions(ai_actions)
+                cost = getattr(action_obj, "time_cost", 1) if action_obj else 1
+                for _ in range(cost):
+                    if current_engine.state.scenario_state != "active":
+                        break
+                    ai_intent = current_engine.ai_opponent.evaluate_intent(action_obj)
+                    new_actions = current_engine.ai_opponent.react_to_action(
+                        action_obj,
+                        current_engine.state,
+                        current_engine.available_actions,
+                        ai_intent,
+                        current_engine.mode
+                    )
+                    ai_actions.extend(new_actions)
+                    current_engine.apply_ai_actions(new_actions)
         
         # Handle standard actions
         else:
@@ -358,17 +486,22 @@ def process_action(input_data: str):
             # AI loop step 1: evaluate intent from action
             if current_engine.ai_opponent:
                 action_obj = next((a for a in current_engine.available_actions if a.id == input_data), None)
-                ai_intent = current_engine.ai_opponent.evaluate_intent(action_obj)
-                # AI loop step 3: choose counter-actions based on updated state
-                ai_actions = current_engine.ai_opponent.react_to_action(
-                    action_obj,
-                    current_engine.state,
-                    current_engine.available_actions,
-                    ai_intent,
-                    current_engine.mode
-                )
-                # AI loop step 4: apply counter-actions (observable effects)
-                current_engine.apply_ai_actions(ai_actions)
+                cost = getattr(action_obj, "time_cost", 1) if action_obj else 1
+                for _ in range(cost):
+                    if current_engine.state.scenario_state != "active":
+                        break
+                    ai_intent = current_engine.ai_opponent.evaluate_intent(action_obj)
+                    # AI loop step 3: choose counter-actions based on updated state
+                    new_actions = current_engine.ai_opponent.react_to_action(
+                        action_obj,
+                        current_engine.state,
+                        current_engine.available_actions,
+                        ai_intent,
+                        current_engine.mode
+                    )
+                    ai_actions.extend(new_actions)
+                    # AI loop step 4: apply counter-actions (observable effects)
+                    current_engine.apply_ai_actions(new_actions)
         
         # Return updated state
         updated_response = _engine_state_to_api_response(current_engine, current_mentor, ai_actions)

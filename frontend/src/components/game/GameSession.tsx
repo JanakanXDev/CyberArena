@@ -50,14 +50,19 @@ export const GameSession = () => {
     }
   }, [mode, difficulty, scenarioId]);
 
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const handleAction = async (input: string) => {
-    if (gameState.sessionStatus === 'collapsed' || gameState.missionComplete) return;
+    if (gameState.sessionStatus === 'collapsed' || gameState.missionComplete || isProcessing) return;
+    setIsProcessing(true);
     try {
       const newState = await api.sendAction(input);
       setGameState(newState);
     } catch (error) {
       console.error('Action error:', error);
       alert(`Action failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -82,5 +87,5 @@ export const GameSession = () => {
     );
   }
 
-  return <Dashboard state={gameState} onAction={handleAction} />;
+  return <Dashboard state={gameState} onAction={handleAction} isProcessing={isProcessing} />;
 };

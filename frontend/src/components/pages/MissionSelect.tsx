@@ -42,6 +42,14 @@ export const MissionSelect = () => {
 
   const scenarios = [
     {
+      id: 'level_0_tutorial',
+      title: 'Level 0: The Evidence Loop',
+      category: 'Tutorial',
+      difficulty: 'Trainee',
+      icon: <GraduationCap className="w-6 h-6 text-yellow-500" />,
+      desc: 'Learn the core game loop: investigate first, deduce second.'
+    },
+    {
       id: 'input_trust_failures',
       title: 'Operation: Broken Trust',
       category: 'Web Exploitation',

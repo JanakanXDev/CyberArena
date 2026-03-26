@@ -97,6 +97,7 @@ class Action:
     available: bool = True
     visible: bool = True
     lock_until_turn: int = 0
+    time_cost: int = 1
 
 
 @dataclass
@@ -287,7 +288,8 @@ class SimulationEngine:
             pressure_delta=action_config.get("pressure_delta", 0),
             stability_delta=action_config.get("stability_delta", 0),
             available=base_available,
-            visible=action_config.get("visible", True)
+            visible=action_config.get("visible", True),
+            time_cost=action_config.get("time_cost", 1)
         )
     
     def _create_delayed_consequence(self, config: Dict[str, Any]) -> DelayedConsequence:
@@ -352,7 +354,7 @@ class SimulationEngine:
             return self._get_state_dict(), []
         self.turn_count += 1
         ai_actions = []
-        
+
         # Find action
         action = next((a for a in self.available_actions if a.id == action_id), None)
         if not action:
@@ -367,66 +369,145 @@ class SimulationEngine:
                 print(f"Warning: Action '{action_id}' not found in available actions")
                 print(f"Available action IDs: {[a.id for a in self.available_actions]}")
                 return self._get_state_dict(), ai_actions
-        
-        # Check availability (considering hypothesis requirements)
+
+        # Determine whether the action is actually executable this turn
+        action_blocked = False
         if action.hypothesis_required:
             hyp = next((h for h in self.hypotheses if h.id == action.hypothesis_required), None)
             if not hyp or not hyp.validated:
                 print(f"Warning: Action '{action_id}' requires validated hypothesis '{action.hypothesis_required}'")
-                return self._get_state_dict(), ai_actions
-        
-        if action.lock_until_turn >= self.turn_count:
+                action_blocked = True
+
+        if not action_blocked and action.lock_until_turn >= self.turn_count:
             print(f"Warning: Action '{action_id}' is temporarily locked by AI")
-            return self._get_state_dict(), ai_actions
-        
-        if not action.available:
+            action_blocked = True
+
+        if not action_blocked and not action.available:
             print(f"Warning: Action '{action_id}' is marked as unavailable")
+            action_blocked = True
+
+        if action_blocked:
+            # Even a blocked turn counts: apply passive pressure escalation so
+            # the game can still reach a defeat condition and never gets stuck.
+            self.state.pressure = min(100, self.state.pressure + 3)
+            self.state.action_history.append({
+                "action_id": action_id,
+                "action_type": action.type,
+                "turn": self.turn_count,
+                "timestamp": datetime.now().isoformat(),
+                "actually_failed": True
+            })
+            self._apply_pressure_effects()
+            self._check_system_collapse()
+            self._evaluate_terminal_state()
             return self._get_state_dict(), ai_actions
-        
+
+        # --- Phase 1: CONTROLLED RANDOMNESS (Bounded Probability) ---
+        # Calculate dynamic success probability based on system state
+        # Formula: clamp(base - pressure*weight + stability*weight, MIN, MAX)
+        base_chance = 1.0
+        if action.type in ["escalate", "stress", "alter", "pivot"]:
+            # High-risk actions: heavily influenced by pressure/stability
+            raw = 1.0 - (self.state.pressure * 0.005) - (self.state.ai_visual_state.entropy * 0.003) + (self.state.stability * 0.002)
+            base_chance = max(0.2, min(0.85, raw))
+        elif action.type in ["probe", "stealth_probe", "inspect"]:
+            # Low-risk actions: still affected but with higher floor
+            raw = 1.0 - (self.state.ai_visual_state.entropy * 0.002) + (self.state.stability * 0.001)
+            base_chance = max(0.5, min(0.95, raw))
+        else:
+            # Passive/monitor actions: minimal randomness
+            base_chance = max(0.7, min(0.95, 1.0 - (self.state.pressure * 0.002)))
+
+        if self.mode == LearningMode.PLAYGROUND:
+            base_chance = 1.0
+
+        # --- DETERMINISTIC ANCHORS ---
+        # Rule: If component is hardened, exploit actions targeting it MUST fail
+        # Rule: If vulnerability is patched, exploitation ALWAYS fails
+        deterministic_fail = False
+        deterministic_reason = ""
+
+        # Check if the action exploits a patched vulnerability
+        immediate = action.immediate_effect
+        if "vulnerability_exploited" in immediate:
+            vuln_id = immediate["vulnerability_exploited"]
+            vuln = self.state.vulnerabilities.get(vuln_id, {})
+            if vuln.get("patched"):
+                deterministic_fail = True
+                deterministic_reason = f"Vulnerability '{vuln_id}' has been patched. Exploitation is impossible."
+            elif vuln.get("false_lead"):
+                deterministic_fail = True
+                deterministic_reason = f"Target '{vuln_id}' is a decoy/honeypot. No real exploit path exists."
+
+        # Check if target component is hardened
+        if "component_modified" in immediate:
+            comp_id = immediate["component_modified"]
+            comp = self.state.system_components.get(comp_id, {})
+            if comp.get("hardened") and action.type in ["escalate", "stress", "pivot", "alter"]:
+                deterministic_fail = True
+                deterministic_reason = f"Component '{comp_id}' is hardened. Attack vectors are blocked."
+
+        if deterministic_fail:
+            action_failed = True
+            self._record_system_event(f"Deterministic failure: {deterministic_reason}", "error")
+        else:
+            action_failed = random.random() > base_chance
+
         # Record action
         self.state.action_history.append({
             "action_id": action_id,
             "action_type": action.type,
             "turn": self.turn_count,
             "timestamp": datetime.now().isoformat(),
-            "actually_failed": False
+            "actually_failed": action_failed
         })
-        
-        # Apply immediate effects
-        self._apply_immediate_effects(action)
-        
-        # Check for contradictions
-        self._check_contradictions()
-        
-        # Schedule delayed effects
-        self._schedule_delayed_effects(action)
-        
-        # Process delayed consequences
+
+        if action_failed:
+            self._record_system_event(
+                f"Action failed dynamically (Chance to succeed was {int(base_chance*100)}%). Target resisted execution.", 
+                "error"
+            )
+            # Penalty for missing: slight pressure bump, no immediate effects
+            self.state.pressure = min(100, self.state.pressure + max(1, action.pressure_delta // 2))
+        else:
+            # Apply immediate effects on success
+            self._apply_immediate_effects(action)
+    
+            # Check for contradictions
+            self._check_contradictions()
+    
+            # Schedule delayed effects
+            self._schedule_delayed_effects(action)
+    
+            # Process delayed consequences (we still process them even if this specific action failed, because previous ones might trigger)
         self._process_delayed_consequences()
-        
+
         # Apply pressure-based system behavior and strategy punishment
         self._apply_strategy_punishment(action)
         self._apply_pressure_effects()
-        
+
         # Check for collapse conditions
         self._check_system_collapse()
-        
+
+        # Coherence validation after each turn
+        self.validate_state()
+
         # Check Terminal State Objectives
         self._evaluate_terminal_state()
-        
+
         # Update phase based on state
         self._update_phase()
-        
+
         # Antigravity Observation
         self.antigravity.observe(self.state, action, {"failed": self.state.action_history[-1].get("actually_failed")})
-        
+
         # Check for specific failure feedback
         if self.state.action_history[-1].get("actually_failed"):
             feedback = self.antigravity.analyze_failure("action_failed", {"action": action})
             if feedback:
                 self.state.antigravity_feedback = feedback
                 self._record_system_event("Antigravity analysis generated.", "info")
-        
+
         return self._get_state_dict(), ai_actions
 
     def _evaluate_terminal_state(self):
@@ -445,6 +526,19 @@ class SimulationEngine:
                     if core_hyps and all(any(h.id == ch and h.validated for h in self.hypotheses) for ch in core_hyps):
                         won = True
                         break
+            elif cond.get("type") == "hypothesis_and_action":
+                # Compound win: requires both correct hypothesis validated AND a specific action executed successfully.
+                # This enforces the intended loop: investigate → confirm finding → take containment action → win.
+                req_hyp = cond.get("hypothesis_id")
+                req_action = cond.get("action_id")
+                hyp_ok = any(h.id == req_hyp and h.validated for h in self.hypotheses)
+                action_ok = any(
+                    a.get("action_id") == req_action and not a.get("actually_failed")
+                    for a in self.state.action_history
+                )
+                if hyp_ok and action_ok:
+                    won = True
+                    break
             elif cond.get("type") == "objective_achieved":
                 if any(cond.get("target") in a.get("action_type", "") and not a.get("actually_failed") for a in self.state.action_history):
                     won = True
@@ -461,6 +555,10 @@ class SimulationEngine:
                 if self.state.pressure >= cond.get("target", 100):
                     lost = True
                     break
+            elif cond.get("type") == "stability_threshold":
+                if self.state.stability <= cond.get("target", 10):
+                    lost = True
+                    break
             elif cond.get("type") == "detection_threshold":
                 if self.state.pressure >= 90: # proxy for critical detection
                     lost = True
@@ -469,7 +567,18 @@ class SimulationEngine:
                 if self.state.stability <= 10: # proxy for asset loss
                     lost = True
                     break
-                    
+
+        # Fallback defeat: player stuck on tactical_fallback for 3+ consecutive turns
+        if not won and not lost:
+            recent_actions = self.state.action_history[-3:]
+            if len(recent_actions) >= 3 and all(
+                a.get("action_id") == "tactical_fallback" for a in recent_actions
+            ):
+                lost = True
+                self._record_system_event(
+                    "Operator unable to act. System overwhelmed by attacker.", "error"
+                )
+
         if won:
             self.state.scenario_state = "victory"
             self._generate_strategic_debrief()
@@ -487,6 +596,28 @@ class SimulationEngine:
         validated = sum(1 for h in self.hypotheses if h.validated)
         invalidated = sum(1 for h in self.hypotheses if h.tested and not h.validated)
         
+        # --- Phase 3: SKILL SCORING LOGIC ---
+        base_score = 50 if outcome == "victory" else 10
+        stability_bonus = int((self.state.stability / 100) * 20)
+        pressure_penalty = int((self.state.pressure / 100) * 20)
+        turn_penalty = min(20, max(0, self.turn_count - 5))
+        
+        total_hyps = validated + invalidated
+        accuracy_ratio = (validated / total_hyps) if total_hyps > 0 else 0
+        accuracy_bonus = int(accuracy_ratio * 30)
+        
+        failed_actions = sum(1 for a in self.state.action_history if a.get("actually_failed"))
+        stealth_penalty = min(20, failed_actions * 2)
+        
+        final_score = max(0, min(100, base_score + stability_bonus - pressure_penalty - turn_penalty + accuracy_bonus - stealth_penalty))
+        
+        if final_score >= 90: grade = "S"
+        elif final_score >= 80: grade = "A"
+        elif final_score >= 70: grade = "B"
+        elif final_score >= 60: grade = "C"
+        elif final_score >= 40: grade = "D"
+        else: grade = "F"
+        
         self.state.strategic_debrief = {
             "outcome": outcome,
             "turns": self.turn_count,
@@ -496,7 +627,15 @@ class SimulationEngine:
             "ai_end_posture": self.state.ai_visual_state.posture,
             "hypotheses_validated": validated,
             "hypotheses_invalidated": invalidated,
-            "summary": summary
+            "summary": summary,
+            "score": final_score,
+            "grade": grade,
+            "metrics_breakdown": {
+                "efficiency": {"label": "Turn Efficiency", "penalty": f"-{turn_penalty}", "raw": self.turn_count},
+                "accuracy": {"label": "Deduction Accuracy", "bonus": f"+{accuracy_bonus}", "raw": total_hyps},
+                "stealth": {"label": "Stealth / Noise", "penalty": f"-{stealth_penalty}", "raw": failed_actions},
+                "stability": {"label": "System Stability", "bonus": f"+{stability_bonus}", "raw": self.state.stability}
+            }
         }
         
         level = "info" if outcome == "victory" else "error"
@@ -519,7 +658,12 @@ class SimulationEngine:
             self.state.collapse_reason = "stability_failure"
             self.state.collapse_message = "Operational stability failed. Access pathways collapsed."
             self._record_system_event("Operational stability failed. Access pathways collapsed.", "error")
-            
+
+            # Also mark as defeat so the frontend shows the debrief screen
+            if self.state.scenario_state == "active":
+                self.state.scenario_state = "defeat"
+                self._generate_strategic_debrief()
+
             # Antigravity Collapse Analysis
             feedback = self.antigravity.analyze_failure("collapse", {})
             if feedback:
@@ -816,7 +960,8 @@ class SimulationEngine:
                 "label": a.label,
                 "description": a.description,
                 "type": a.type,
-                "available": available
+                "available": available,
+                "time_cost": getattr(a, "time_cost", 1)
             })
             
         # Fallback Logic: Prevent Dead States
@@ -886,12 +1031,13 @@ class SimulationEngine:
             } for k, v in self.state.vulnerabilities.items()},
             "action_history": [
                 {
-                    "action_id": a.action_id if hasattr(a, "action_id") else getattr(a, "id", str(a)),
-                    "action_label": next((cfg.get("label", a.action_id) for cfg in self._actions_config if cfg.get("id") == a.action_id), a.action_id) if hasattr(a, "action_id") else str(a),
-                    "turn": getattr(a, "turn_count", getattr(a, "turn", 0)),
-                    "timestamp": a.timestamp.strftime("%H:%M:%S") if hasattr(a, "timestamp") and hasattr(a.timestamp, "strftime") else "",
-                    "actually_failed": getattr(a, "actually_failed", False)
-                } for a in self.state.action_history[-10:]
+                    "action_id": a.get("action_id", "unknown"),
+                    "action_label": a.get("action_label", a.get("action_id", "unknown")),
+                    "turn": a.get("turn", 0),
+                    "timestamp": a.get("timestamp", ""),
+                    "actually_failed": a.get("actually_failed", False),
+                    "action_type": a.get("action_type", "unknown")
+                } for a in self.state.action_history[-15:]
             ],
             "contradictions": self.state.contradictions,
             "session_status": self.state.session_status,
@@ -905,16 +1051,26 @@ class SimulationEngine:
         }
 
     def _apply_ai_action_effects(self, ai_action: Dict[str, Any]):
-        """Apply AI counter-action effects to simulation state"""
+        """Apply AI counter-action effects to simulation state.
+        RULE: Every mutation MUST generate a visible system event."""
         effects = ai_action.get("effects", {}) if isinstance(ai_action, dict) else {}
+        ai_name = ai_action.get("label", ai_action.get("name", "AI Counter-Action"))
         if not effects:
             return
         
         # Metric deltas
         if "pressure_delta" in effects:
-            self.state.pressure = max(0, min(100, self.state.pressure + effects["pressure_delta"]))
+            delta = effects["pressure_delta"]
+            self.state.pressure = max(0, min(100, self.state.pressure + delta))
+            self._record_system_event(
+                f"[AI: {ai_name}] Pressure {'increased' if delta > 0 else 'decreased'} by {abs(delta)}.", "info"
+            )
         if "stability_delta" in effects:
-            self.state.stability = max(0, min(100, self.state.stability + effects["stability_delta"]))
+            delta = effects["stability_delta"]
+            self.state.stability = max(0, min(100, self.state.stability + delta))
+            self._record_system_event(
+                f"[AI: {ai_name}] Stability {'decreased' if delta < 0 else 'increased'} by {abs(delta)}.", "info"
+            )
         if "ai_aggressiveness_delta" in effects:
             self.state.ai_aggressiveness = max(0, min(100, self.state.ai_aggressiveness + effects["ai_aggressiveness_delta"]))
         
@@ -924,29 +1080,62 @@ class SimulationEngine:
             if set_monitoring == "all":
                 for comp_id in self.state.system_components:
                     self.state.system_components[comp_id]["monitoring"] = True
+                self._record_system_event(
+                    f"[AI: {ai_name}] All components placed under active monitoring.", "warning"
+                )
             elif isinstance(set_monitoring, list):
                 for comp_id in set_monitoring:
                     if comp_id in self.state.system_components:
                         self.state.system_components[comp_id]["monitoring"] = True
+                self._record_system_event(
+                    f"[AI: {ai_name}] Monitoring enabled on: {', '.join(set_monitoring)}.", "warning"
+                )
         
         harden_components = effects.get("harden_components", [])
         for comp_id in harden_components:
             if comp_id in self.state.system_components:
                 self.state.system_components[comp_id]["hardened"] = True
+                self._record_system_event(
+                    f"[AI: {ai_name}] Component '{comp_id}' silently hardened. Exploits against it will now fail.", "warning"
+                )
+                
+        # Deploy dynamic honeypot vulnerability
+        honeypot = effects.get("deploy_honeypot_vuln")
+        if honeypot:
+            vuln_id = honeypot.get("id", f"honeypot_vuln_{str(uuid.uuid4())[:8]}")
+            self.state.vulnerabilities[vuln_id] = {
+                "active": True,
+                "patched": False,
+                "detected": False,
+                "exploited": False,
+                "false_lead": True
+            }
+            self._record_system_event(
+                f"[AI: {ai_name}] Honeypot deployed: fake vulnerability '{vuln_id}' introduced. Interacting with it will trigger penalties.", "warning"
+            )
         
         # Defenses / attacks markers
         for defense in effects.get("add_defenses", []):
             if defense not in self.state.active_defenses:
                 self.state.active_defenses.append(defense)
+                self._record_system_event(
+                    f"[AI: {ai_name}] Defense activated: {defense}.", "warning"
+                )
         for attack in effects.get("add_attacks", []):
             if attack not in self.state.active_attacks:
                 self.state.active_attacks.append(attack)
+                self._record_system_event(
+                    f"[AI: {ai_name}] Attack vector deployed: {attack}.", "warning"
+                )
         
         # Rate limiting indicators
         rate_limit = effects.get("rate_limit")
         if rate_limit:
             if "rate_limit" not in self.state.active_defenses:
                 self.state.active_defenses.append("rate_limit")
+                self._record_system_event(
+                    f"[AI: {ai_name}] Adaptive rate limiting activated.", "warning"
+                )
         
         # Patch vulnerabilities
         patch_config = effects.get("patch_vulnerabilities")
@@ -958,12 +1147,18 @@ class SimulationEngine:
                         vuln["patched"] = True
                         if not partial:
                             vuln["active"] = False
+                        self._record_system_event(
+                            f"[AI: {ai_name}] Vulnerability '{vuln_id}' patched{' (partially)' if partial else ''}.", "warning"
+                        )
                         break
             for vuln_id in patch_config.get("ids", []):
                 if vuln_id in self.state.vulnerabilities:
                     self.state.vulnerabilities[vuln_id]["patched"] = True
                     if not partial:
                         self.state.vulnerabilities[vuln_id]["active"] = False
+                    self._record_system_event(
+                        f"[AI: {ai_name}] Vulnerability '{vuln_id}' patched.", "warning"
+                    )
         
         # Detect vulnerabilities (false leads / bait)
         detect_config = effects.get("detect_vulnerabilities")
@@ -1023,6 +1218,9 @@ class SimulationEngine:
                     if inactive_vulns:
                         enable_id = random.choice(inactive_vulns)
                         self.state.vulnerabilities[enable_id]["active"] = True
+                    self._record_system_event(
+                        f"[AI: {ai_name}] Attack surface shifted. Active vulnerabilities reconfigured.", "warning"
+                    )
             self._set_condition("route_shifted", True)
         
         # Action locks (availability changes)
@@ -1065,3 +1263,59 @@ class SimulationEngine:
         # Reflect AI-driven pressure changes into behavior
         self._apply_pressure_effects()
         self._check_system_collapse()
+        # System coherence validation after every mutation batch
+        self.validate_state()
+
+    def validate_state(self):
+        """System coherence validation layer.
+        Runs after each turn to verify internal consistency.
+        Auto-corrects minor issues and logs critical errors."""
+        issues = []
+
+        # 1. Verify metrics are within bounds
+        if self.state.pressure < 0 or self.state.pressure > 100:
+            self.state.pressure = max(0, min(100, self.state.pressure))
+            issues.append("Pressure out of bounds — auto-corrected.")
+        if self.state.stability < 0 or self.state.stability > 100:
+            self.state.stability = max(0, min(100, self.state.stability))
+            issues.append("Stability out of bounds — auto-corrected.")
+
+        # 2. Verify hardened components can't have active exploits
+        for comp_id, comp in self.state.system_components.items():
+            if comp.get("hardened"):
+                # Any vulnerability linked to a hardened component should not be exploitable
+                for vuln_id, vuln in self.state.vulnerabilities.items():
+                    if vuln.get("interactions") and comp_id in vuln.get("interactions", []):
+                        if vuln.get("exploited") and not vuln.get("false_lead"):
+                            issues.append(
+                                f"Coherence violation: '{vuln_id}' is exploited but "
+                                f"related component '{comp_id}' is hardened. Marking as unexploitable."
+                            )
+
+        # 3. Verify patched vulnerabilities are not marked active
+        for vuln_id, vuln in self.state.vulnerabilities.items():
+            if vuln.get("patched") and vuln.get("active"):
+                vuln["active"] = False
+                issues.append(f"Coherence fix: Vulnerability '{vuln_id}' was patched but still active — corrected.")
+
+        # 4. Verify collapse state consistency
+        if self.state.stability <= 0 and self.state.session_status != "collapsed":
+            self.state.session_status = "collapsed"
+            issues.append("Coherence fix: Stability at 0 without collapse state — corrected.")
+
+        # 5. Verify hypothesis config consistency
+        for hyp in self.hypotheses:
+            if hyp.validated:
+                config = self._hypotheses_config.get(hyp.id, {})
+                if config and config.get("correct") is False:
+                    hyp.validated = False
+                    issues.append(
+                        f"Coherence fix: Hypothesis '{hyp.id}' was validated but is "
+                        f"marked incorrect in config — invalidated."
+                    )
+
+        # Log any issues found
+        for issue in issues:
+            self._record_system_event(f"[Coherence Check] {issue}", "warning")
+
+        return len(issues) == 0

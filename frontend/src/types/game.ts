@@ -17,6 +17,7 @@ export interface Action {
   description: string; // Conceptual description
   type: string; // "probe", "escalate", "isolate", "monitor", etc.
   available: boolean;
+  time_cost?: number;
 }
 
 export interface Hypothesis {
@@ -82,6 +83,7 @@ export interface GameState {
     turn: number;
     timestamp: string;
     actually_failed?: boolean;
+    action_type?: string;
   }>;
   contradictions: Array<{
     id: string;
@@ -106,6 +108,10 @@ export interface GameState {
   scenarioState?: string;
   missionComplete: boolean;
   strategicDebrief?: StrategicDebrief;
+
+  // AI Counter-Move system
+  aiLastMove?: AiMove;
+  aiMoveHistory?: AiMove[];
 }
 
 export interface StrategicDebrief {
@@ -118,4 +124,22 @@ export interface StrategicDebrief {
   hypotheses_validated: number;
   hypotheses_invalidated: number;
   summary: string;
+  score?: number;
+  grade?: string;
+  metrics_breakdown?: {
+    efficiency: { label: string; penalty: string; raw: number };
+    accuracy: { label: string; bonus: string; raw: number };
+    stealth: { label: string; penalty: string; raw: number };
+    stability: { label: string; bonus: string; raw: number };
+  };
+}
+
+export interface AiMove {
+  name: string;
+  label: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  effects_summary: string[];     // e.g. ["+15 Pressure", "Locks Isolate (1t)"]
+  counter_hint: string;          // what to do to counter this
+  message?: string;
 }

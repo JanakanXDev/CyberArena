@@ -1,0 +1,60 @@
+﻿--- Starting Learner Session ---
+
+[Learner]: Starting Guided Simulation on Broken Trust...
+[System]: 3 hypotheses available.
+  - Validation occurs at the WAF, leaving the app exposed (Focus: web_server) (ID: hyp_validation_layer)
+  - Verbose errors indicate internal logic flow (Focus: web_server) (ID: hyp_error_oracle)
+  - Session state persists across invalid requests (Focus: web_server) (ID: hyp_state_persistence)
+
+[Learner]: Asking Mentor for help...
+[Mentor]: Welcome to CyberArena! As your mentor, my goal is to guide you through this simulation and help you develop valuable cybersecurity skills.
+
+Since you're just starting out, let's begin by testing one of the hypotheses. Which one catches your attention? I'll suggest a specific action based on that hypothesis. For now, let's focus on understanding how the system works.
+
+Remember, in CyberArena, we test hypotheses to gather evidence and refine our understanding of the system. So, which hypothesis would you like to start with?
+
+(Note: As your mentor, I'll provide concrete suggestions and explanations, so don't worry if you're not sure what to do next.)
+
+[Learner]: Testing hypothesis: hyp_validation_layer...
+[System]: Hypothesis 'Validation occurs at the WAF, leaving the app exposed (Focus: web_server)' -> Validated: True, Tested: True
+
+[Learner]: Acknowledged. Taking action: act_map_boundaries...
+[System Event Logs]:
+  > Operator (info): Action executed: act_map_boundaries
+  > AI Defender (warning): [MED] Input Validation Tightened: Normalization rules are updated to block known payload patterns.
+
+[Learner]: Session complete. Gathering learning data...
+
+--- Analytics Report ---
+{
+  "curriculum_adjustment": {
+    "difficulty": "hard",
+    "focus_areas": [
+      "System Behavior"
+    ],
+    "skip_areas": []
+  },
+  "learning_data": {
+    "assumptions": [
+      {
+        "concept": "Input Handling",
+        "id": "hyp_validation_layer",
+        "label": "Validation occurs at the WAF, leaving the app exposed (Focus: web_server)",
+        "validated": true
+      }
+    ],
+    "concepts": [],
+    "failures": [
+      {
+        "action_id": "act_map_boundaries",
+        "concept": "System Behavior",
+        "turn": 1
+      }
+    ],
+    "revisions": [],
+    "strategies": [
+      "act"
+    ]
+  },
+  "recommendations": []
+}

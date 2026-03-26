@@ -7,6 +7,7 @@ Enforces strict mental model separation between modes.
 from typing import Dict, Any
 from simulation_engine import LearningMode
 from ai_systems import AIPersona, AIDifficulty
+import random
 
 
 def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -> Dict[str, Any]:
@@ -19,6 +20,18 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
     # Trust Assumption: "WAF handles security, so WebApp logic trusts the input."
     
     base_scenarios = {
+        "level_0_tutorial": {
+            "title": "Level 0: The Evidence Loop",
+            "description": "Tutorial: Learn how to gather evidence before forming hypotheses.",
+            "initial_state": {
+                "pressure": 0,
+                "stability": 100
+            },
+            "system_components": {
+                "tutorial_system": {"status": "operational", "monitoring": False, "hardened": False}
+            },
+            "vulnerabilities": {}
+        },
         "input_trust_failures": {
             "title": "Operation: Broken Trust",
             "description": "Legacy admin portal with brittle input handling",
@@ -56,6 +69,22 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
 
     base = base_scenarios.get(scenario_id, base_scenarios["input_trust_failures"])
 
+    # Phase 1: BREAK DETERMINISM (Randomize boot state parameters)
+    if scenario_id != "level_0_tutorial":
+        # Randomize baseline pressure
+        base["initial_state"]["pressure"] = max(0, base["initial_state"]["pressure"] + random.randint(-5, 10))
+        
+        # Randomize secondary vulnerabilities
+        if "reflection_surface" in base.get("vulnerabilities", {}):
+            base["vulnerabilities"]["reflection_surface"]["active"] = random.choice([True, False])
+            
+        # Randomize baseline monitoring
+        if "waf" in base.get("system_components", {}):
+            base["system_components"]["waf"]["monitoring"] = random.choice([True, False])
+
+    if scenario_id == "level_0_tutorial":
+        return _configure_tutorial_scenario(base, mode)
+
     # Configure strictly based on mode to enforce distinct mental environments
     if mode == LearningMode.GUIDED_SIMULATION:
         return _configure_guided_simulation_trust(base, difficulty)
@@ -86,6 +115,7 @@ def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Validation occurs at the WAF, leaving the app exposed",
             "description": "The logic layer might assume all input is clean if it passes the gateway.",
             "correct": True,
+            "evidence_required": ["act_map_boundaries"],
             "why_correct": "✓ Correct. The WAF filters traffic first, and the app trusts whatever gets through. This is the core flaw — the backend never re-validates input, so anything that slips past the WAF reaches the logic layer unchecked.",
             "why_wrong": "✗ Wrong. Validation is actually applied server-side as well — the WAF alone isn't the last checkpoint."
         },
@@ -94,6 +124,7 @@ def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Verbose errors indicate internal logic flow",
             "description": "Stack traces or messages might reveal the decision tree structure.",
             "correct": False,
+            "evidence_required": ["act_trigger_exception"],
             "why_correct": "✓ This turned out to be true here — the error messages do leak stack traces. But be careful: this is a lucky find, not a reliable technique.",
             "why_wrong": "✗ Incorrect. The application suppresses detailed errors before they reach the client. You're seeing generic failure messages, not actual stack traces. This was a decoy path — verbose error leakage is a real vulnerability but it's not present here."
         },
@@ -102,6 +133,7 @@ def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Session state persists across invalid requests",
             "description": "Failed inputs might still alter the session context for subsequent requests.",
             "correct": True,
+            "evidence_required": ["act_corrupt_session"],
             "why_correct": "✓ Correct. The server commits partial session changes before the request fully validates. A failed login still writes a partial auth token to the session — meaning your next request arrives with elevated context the server didn't intend to grant.",
             "why_wrong": "✗ Wrong. Session state is rolled back completely on failed requests; each new attempt starts from a clean slate."
         }
@@ -115,7 +147,6 @@ def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) ->
             "description": "Send varying lengths to define the accepted window.",
             "type": "probe",
             "pressure_delta": 2,
-            "hypothesis_required": "hyp_validation_layer",
             "delayed_effects": [{"turn_delay": 3, "description": "WAF calibrates to request size", "pressure_delta": 3}]
         },
         {
@@ -124,7 +155,6 @@ def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) ->
             "description": "Send arrays where strings are expected to observe handling.",
             "type": "inspect",
             "pressure_delta": 4,
-            "hypothesis_required": "hyp_error_oracle",
             "immediate_effect": {"component_modified": "web_server", "modification": {"monitoring": True}}
         },
         {
@@ -134,7 +164,6 @@ def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) ->
             "type": "escalate",
             "pressure_delta": 5,
             "stability_delta": -2,
-            "hypothesis_required": "hyp_state_persistence",
             "immediate_effect": {"vulnerability_exploited": "decision_path_influence"}
         },
         {
@@ -169,6 +198,7 @@ def _configure_attacker_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Defenses trigger on frequency, not content",
             "description": "Slow, complex attacks might bypass the automated blocks.",
             "correct": True,
+            "evidence_required": ["act_slow_drip"],
             "why_correct": "✓ Correct. The WAF uses request-rate thresholds, not deep payload analysis. Spreading your requests out over time avoids the trigger window entirely — the defender only sees noise, not a pattern.",
             "why_wrong": "✗ Wrong. Content inspection is actually active here — payload patterns are being matched regardless of rate."
         },
@@ -177,6 +207,7 @@ def _configure_attacker_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "The admin login is a decoy endpoint",
             "description": "Obvious entry points are likely monitored traps.",
             "correct": False,
+            "evidence_required": ["act_identify_outliers"],
             "why_correct": "✓ You were right to be suspicious — this endpoint does have elevated logging.",
             "why_wrong": "✗ Wrong. The admin endpoint is real, not a honeypot — just heavily monitored. Touching it triggered an alert. Don't confuse 'being watched' with 'being fake'."
         },
@@ -185,6 +216,7 @@ def _configure_attacker_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "High noise levels will mask injection attempts",
             "description": "Flooding logs might hide the specific successful exploit.",
             "correct": False,
+            "evidence_required": ["act_noise_flood"],
             "why_correct": "✓ In this case noise helped mask the timing.",
             "why_wrong": "✗ Wrong — and costly. The AI correlates log volume spikes as attack indicators. Flooding actually made you MORE visible, not less. The defender's system flagged the unusual request rate and hardened the WAF in response."
         }
@@ -198,7 +230,6 @@ def _configure_attacker_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "description": "Fragment the payload to evade signature detection.",
             "type": "stealth_probe",
             "pressure_delta": 1,
-            "hypothesis_required": "hyp_rate_limiting",
             "delayed_effects": [{"turn_delay": 5, "description": "Correlation engine reconstructs fragments", "pressure_delta": 8}]
         },
         {
@@ -206,17 +237,16 @@ def _configure_attacker_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Fingerprint response timing",
             "description": "Find endpoints that deviate from the decoy timing profile.",
             "type": "inspect",
-            "pressure_delta": 2,
-            "hypothesis_required": "hyp_honeypot_detection"
+            "pressure_delta": 2
         },
         {
             "id": "act_noise_flood",
             "label": "Generate background traffic",
-            "description": "Flood valid requests to mask the attack signal.",
+            "description": "Flood valid requests to mask the attack signal. (Costs 2 actions)",
             "type": "escalate",
             "pressure_delta": 15,
+            "time_cost": 2,
             "stability_delta": -5,
-            "hypothesis_required": "hyp_log_saturation",
             "immediate_effect": {"component_modified": "waf", "modification": {"hardened": True}}
             # This action will likely trigger Antigravity Strategy Spamming/Tunnel Vision analysis
         },
@@ -267,6 +297,7 @@ def _configure_defender_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Attacker is using scheduled tasks for return",
             "description": "The instability correlates with specific time windows.",
             "correct": True,
+            "evidence_required": ["act_audit_cron"],
             "why_correct": "✓ Correct. The attacker planted a cron job during initial compromise. It re-runs payloads every few hours. This is why instability comes in waves — it's not human, it's automated recurrence.",
             "why_wrong": "✗ Wrong. The instability is continuous, not time-windowed — it's an active session, not a scheduled task."
         },
@@ -275,6 +306,7 @@ def _configure_defender_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Outbound database traffic is exfiltration",
             "description": "Volume anomalies suggest data theft in progress.",
             "correct": False,
+            "evidence_required": ["act_deep_forensics"],
             "why_correct": "✓ The traffic pattern does suggest exfiltration.",
             "why_wrong": "✗ Wrong. The traffic is a resource exhaustion attack (DoS), not exfiltration. The attacker is hammering the database to cause service failure, not to steal data. Throttling outbound bandwidth simply caused a queue backup and crashed the service."
         },
@@ -295,8 +327,7 @@ def _configure_defender_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "label": "Audit scheduled jobs",
             "description": "Execute once — scans system schedulers for unauthorized cron entries. After clicking, go test the 'Attacker is using scheduled tasks' hypothesis to confirm what you found.",
             "type": "inspect",
-            "pressure_delta": 2,
-            "hypothesis_required": "hyp_persistence_method"
+            "pressure_delta": 2
         },
         {
             "id": "act_traffic_shaping",
@@ -305,24 +336,24 @@ def _configure_defender_campaign_trust(base: Dict[str, Any], difficulty: str) ->
             "type": "restrict",
             "pressure_delta": 5,
             "stability_delta": 5,
-            "hypothesis_required": "hyp_data_exfiltration",
             # This is a trap action: fixing the wrong problem (DoS, not exfil) triggers DoS escalation
             "delayed_effects": [{"turn_delay": 2, "description": "Service crashes due to queue backup (DoS successful)", "stability_delta": -20}]
         },
         {
             "id": "act_quarantine_web",
             "label": "Isolate web server",
-            "description": "Execute once — cuts all network access to the web tier. Use only after testing the breach scope hypothesis to confirm where the attacker actually is.",
+            "description": "Execute once — cuts all network access to the web tier. Use after confirming the attacker is using scheduled tasks, to prevent re-entry.",
             "type": "isolate",
             "pressure_delta": -10,
-            "stability_delta": -5, # Business continuity impact
-            "hypothesis_required": "hyp_breach_scope"
+            "stability_delta": -5,
+            "hypothesis_required": "hyp_persistence_method"
         },
         {
             "id": "act_deep_forensics",
             "label": "Memory forensics",
-            "description": "Execute once — dumps and analyzes RAM to find resident malware. Useful at any time. Raises pressure slightly but may reveal hidden processes.",
+            "description": "Execute once — dumps and analyzes RAM to find resident malware. Useful at any time. Raises pressure slightly but may reveal hidden processes. (Costs 3 actions)",
             "type": "monitor",
+            "time_cost": 3,
             "pressure_delta": 5
         }
     ]
@@ -359,9 +390,10 @@ def _configure_playground_trust(base: Dict[str, Any], difficulty: str) -> Dict[s
         {
             "id": "act_fuzz_all",
             "label": "Fuzz all endpoints concurrently",
-            "description": "Maximum throughput random input generation.",
+            "description": "Maximum throughput random input generation. (Costs 2 actions)",
             "type": "stress",
             "available": True,
+            "time_cost": 2,
             "pressure_delta": 30,
             "stability_delta": -40,
             "immediate_effect": {"vulnerability_exploited": "input_boundary"}
@@ -442,8 +474,15 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
         loss_conditions = [{"type": "detection_threshold", "target": "critical"}]
         max_phase = 4
     elif mode == LearningMode.DEFENDER_CAMPAIGN:
-        win_conditions = [{"type": "integrity_restored", "target": 100}]
-        loss_conditions = [{"type": "critical_asset_lost", "target": "all"}]
+        win_conditions = [{
+            "type": "hypothesis_and_action",
+            "hypothesis_id": "hyp_persistence_method",
+            "action_id": "act_audit_cron"
+        }]
+        loss_conditions = [
+            {"type": "pressure_threshold", "target": 90},
+            {"type": "stability_threshold", "target": 15},
+        ]
         max_phase = 5
     elif mode == LearningMode.PLAYGROUND:
         win_conditions = [] # Sandbox mode never auto-ends intentionally
@@ -457,3 +496,44 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
         "loss_conditions": loss_conditions,
         "max_phase": max_phase
     }
+
+def _configure_tutorial_scenario(base: Dict[str, Any], mode: LearningMode) -> Dict[str, Any]:
+    """
+    Tutorial Scenario: The Evidence Loop
+    Teaches the player they must gather evidence before clicking hypotheses.
+    """
+    config = base.copy()
+    from ai_systems import AIPersona, AIDifficulty
+    config["ai_persona"] = AIPersona.DEFENDER
+    config["ai_difficulty"] = AIDifficulty.RULE_BASED
+    
+    config["hypotheses"] = [
+        {
+            "id": "hyp_tutorial",
+            "label": "I must gather evidence before concluding",
+            "description": "Clicking this before 'Gather Evidence' will result in a penalty.",
+            "correct": True,
+            "evidence_required": ["act_gather_evidence"],
+            "why_correct": "✓ Excellent! You learned that Hypotheses require Evidence Actions to be performed first.",
+            "why_wrong": ""
+        }
+    ]
+    
+    config["actions"] = [
+        {
+            "id": "act_gather_evidence",
+            "label": "Gather Evidence",
+            "description": "Always execute actions like this first to uncover evidence and unlock hypotheses.",
+            "type": "inspect",
+            "pressure_delta": 0,
+            "time_cost": 1
+        }
+    ]
+    
+    # Simple win condition: validate the tutorial hypothesis
+    config["win_conditions"] = [{
+        "type": "hypothesis_validated",
+        "hypothesis_id": "hyp_tutorial"
+    }]
+    
+    return config

@@ -1,0 +1,1 @@
+﻿error TS5083: Cannot read file 'C:/Users/janak/OneDrive/Desktop/pro/cyber-arena/frontend/tsconfig.json'.
