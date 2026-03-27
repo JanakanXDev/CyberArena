@@ -53,8 +53,8 @@ export const EventLog = forwardRef<HTMLDivElement, EventLogProps>(
     };
 
     return (
-      <div className="h-full flex flex-col pt-8">
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 font-mono text-sm">
+      <div className="flex flex-col pt-8">
+        <div className="px-6 py-4 space-y-2 font-mono text-sm">
           {logs.map((log) => (
             <div key={log.id} className={`flex gap-3 ${getRowStyle(log)}`}>
               <div className="flex-shrink-0 mt-0.5">{getIcon(log)}</div>

@@ -10,7 +10,7 @@ interface SystemViewProps {
 export const SystemView = forwardRef<HTMLDivElement, SystemViewProps>(
   ({ logs, components }, ref) => {
     return (
-      <div className="h-full flex flex-col pt-8">
+      <div className="flex flex-col pt-8">
         {/* System Components Status */}
         <div className="px-6 pb-4 border-b border-slate-800">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
@@ -52,7 +52,7 @@ export const SystemView = forwardRef<HTMLDivElement, SystemViewProps>(
         </div>
 
         {/* System Logs (Partial, Noisy Signals) */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1 font-mono text-sm">
+        <div className="px-6 py-4 space-y-1 font-mono text-sm">
           {logs.map((log) => (
             <div key={log.id} className="text-slate-300">
               <span className="text-slate-600 mr-2">[{log.timestamp}]</span>

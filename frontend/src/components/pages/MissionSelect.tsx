@@ -11,6 +11,21 @@ export const MissionSelect = () => {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [difficulty, setDifficulty] = useState<string>('medium');
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>(presetExperience);
+  const beginnerLearningPath = [
+    { id: 'beginner_signals', title: 'Signals' },
+    { id: 'beginner_hypothesis', title: 'Hypothesis' },
+    { id: 'beginner_actions', title: 'Actions' },
+    { id: 'beginner_cause_effect', title: 'Cause & Effect' },
+    { id: 'beginner_metrics', title: 'Metrics' },
+    { id: 'beginner_final_simulation', title: 'Final Simulation' },
+  ];
+  const completedBeginnerModules = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('beginner_learning_path_progress') || '[]') as string[];
+    } catch {
+      return [];
+    }
+  })();
 
   const learningModes = [
     {
@@ -54,30 +69,57 @@ export const MissionSelect = () => {
       tier: 'all'
     },
     {
-      id: 'beginner_input_basics',
-      title: 'Beginner: Input Validation Basics',
+      id: 'beginner_signals',
+      title: 'Module 1: System Signals',
       category: 'Beginner',
       difficulty: 'Beginner',
       icon: <Globe className="w-6 h-6 text-emerald-300" />,
-      desc: 'Simple input handling signals with clear cause and effect.',
+      desc: 'Learn to read logs and state signals before acting.',
       tier: 'beginner'
     },
     {
-      id: 'beginner_rate_limit_basics',
-      title: 'Beginner: Rate Limit Basics',
+      id: 'beginner_hypothesis',
+      title: 'Module 2: Hypothesis Formation',
       category: 'Beginner',
       difficulty: 'Beginner',
       icon: <Server className="w-6 h-6 text-emerald-300" />,
-      desc: 'Understand request bursts vs spaced traffic in a controlled API.',
+      desc: 'Build one clear, testable hypothesis from evidence.',
       tier: 'beginner'
     },
     {
-      id: 'beginner_auth_basics',
-      title: 'Beginner: Authentication Basics',
+      id: 'beginner_actions',
+      title: 'Module 3: Actions Understanding',
       category: 'Beginner',
       difficulty: 'Beginner',
       icon: <Shield className="w-6 h-6 text-emerald-300" />,
-      desc: 'Learn retry windows and lockout behavior with minimal complexity.',
+      desc: 'Understand action types and their tactical tradeoffs.',
+      tier: 'beginner'
+    },
+    {
+      id: 'beginner_cause_effect',
+      title: 'Module 4: Cause & Effect',
+      category: 'Beginner',
+      difficulty: 'Beginner',
+      icon: <Shield className="w-6 h-6 text-emerald-300" />,
+      desc: 'Connect each action to the resulting system behavior.',
+      tier: 'beginner'
+    },
+    {
+      id: 'beginner_metrics',
+      title: 'Module 5: Metrics',
+      category: 'Beginner',
+      difficulty: 'Beginner',
+      icon: <Shield className="w-6 h-6 text-emerald-300" />,
+      desc: 'Learn pressure and stability effects step-by-step.',
+      tier: 'beginner'
+    },
+    {
+      id: 'beginner_final_simulation',
+      title: 'Module 6: Final Simulation',
+      category: 'Beginner',
+      difficulty: 'Beginner',
+      icon: <Shield className="w-6 h-6 text-emerald-300" />,
+      desc: 'Use the complete reasoning loop in one guided mission.',
       tier: 'beginner'
     },
     {
@@ -134,6 +176,12 @@ export const MissionSelect = () => {
   };
 
   const handleScenarioSelect = (scenarioId: string) => {
+    if (experienceMode === 'beginner') {
+      const idx = beginnerLearningPath.findIndex(m => m.id === scenarioId);
+      const previous = idx > 0 ? beginnerLearningPath[idx - 1].id : null;
+      const unlocked = idx === 0 || (previous ? completedBeginnerModules.includes(previous) : false);
+      if (!unlocked) return;
+    }
     setSelectedScenario(scenarioId);
   };
 
@@ -258,13 +306,51 @@ export const MissionSelect = () => {
                 </select>
               </div>
             </div>
+            {experienceMode === 'beginner' && (
+              <div className="mb-6 bg-[#111] border border-slate-800 rounded-lg p-4">
+                <div className="text-xs text-emerald-400 uppercase tracking-widest font-bold mb-3">
+                  Beginner Learning Path
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {beginnerLearningPath.map((module, index) => {
+                    const prev = index > 0 ? beginnerLearningPath[index - 1].id : null;
+                    const unlocked = index === 0 || (prev ? completedBeginnerModules.includes(prev) : false);
+                    const done = completedBeginnerModules.includes(module.id);
+                    return (
+                      <div
+                        key={module.id}
+                        className={`text-xs rounded border px-2 py-2 ${
+                          done
+                            ? 'border-emerald-600 bg-emerald-900/20 text-emerald-300'
+                            : unlocked
+                            ? 'border-slate-700 bg-slate-900/40 text-slate-300'
+                            : 'border-slate-800 bg-slate-900/20 text-slate-600'
+                        }`}
+                      >
+                        {module.title}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {visibleScenarios.map((scenario) => (
+                (() => {
+                  const idx = beginnerLearningPath.findIndex(m => m.id === scenario.id);
+                  const prev = idx > 0 ? beginnerLearningPath[idx - 1].id : null;
+                  const beginnerLocked =
+                    experienceMode === 'beginner' &&
+                    idx > 0 &&
+                    !(prev && completedBeginnerModules.includes(prev));
+                  return (
                 <button
                   key={scenario.id}
                   onClick={() => handleScenarioSelect(scenario.id)}
                   className={`p-6 rounded-lg border text-left transition-all ${selectedScenario === scenario.id
                       ? 'border-emerald-500 bg-emerald-900/20'
+                      : beginnerLocked
+                      ? 'border-slate-800 bg-[#111]/30 opacity-60 cursor-not-allowed'
                       : 'border-slate-800 bg-[#111] hover:border-slate-700'
                     }`}
                 >
@@ -279,7 +365,14 @@ export const MissionSelect = () => {
                     {scenario.category}
                   </div>
                   <p className="text-sm text-slate-400 leading-relaxed">{scenario.desc}</p>
+                  {beginnerLocked && (
+                    <p className="text-[10px] text-amber-400 mt-3 uppercase tracking-widest">
+                      Complete previous module to unlock
+                    </p>
+                  )}
                 </button>
+                  );
+                })()
               ))}
             </div>
           </div>

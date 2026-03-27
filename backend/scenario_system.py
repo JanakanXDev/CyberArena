@@ -157,6 +157,67 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
                     "interactions": ["decision_path_influence", "reflection_surface"]
                 }
             }
+        },
+        "beginner_signals": {
+            "title": "Beginner Module: Signals",
+            "description": "Learn to observe system signals from logs and state.",
+            "initial_state": {"pressure": 5, "stability": 100},
+            "system_components": {
+                "web_server": {"status": "operational", "monitoring": True, "hardened": False},
+                "waf": {"status": "operational", "monitoring": False, "hardened": False},
+            },
+            "vulnerabilities": {}
+        },
+        "beginner_hypothesis": {
+            "title": "Beginner Module: Hypothesis Formation",
+            "description": "Turn observed evidence into one clear testable hypothesis.",
+            "initial_state": {"pressure": 8, "stability": 100},
+            "system_components": {
+                "web_server": {"status": "operational", "monitoring": False, "hardened": False},
+                "waf": {"status": "operational", "monitoring": True, "hardened": False},
+            },
+            "vulnerabilities": {}
+        },
+        "beginner_actions": {
+            "title": "Beginner Module: Actions Understanding",
+            "description": "Understand action types and outcomes without harsh penalties.",
+            "initial_state": {"pressure": 10, "stability": 100},
+            "system_components": {
+                "api_gateway": {"status": "operational", "monitoring": False, "hardened": False},
+                "waf": {"status": "operational", "monitoring": False, "hardened": False},
+            },
+            "vulnerabilities": {}
+        },
+        "beginner_cause_effect": {
+            "title": "Beginner Module: Cause & Effect",
+            "description": "Connect user action to immediate system reaction.",
+            "initial_state": {"pressure": 12, "stability": 100},
+            "system_components": {
+                "web_server": {"status": "operational", "monitoring": False, "hardened": False},
+                "database": {"status": "operational", "monitoring": False, "hardened": False},
+            },
+            "vulnerabilities": {}
+        },
+        "beginner_metrics": {
+            "title": "Beginner Module: Metrics",
+            "description": "Observe how pressure and stability move over actions.",
+            "initial_state": {"pressure": 15, "stability": 95},
+            "system_components": {
+                "web_server": {"status": "operational", "monitoring": False, "hardened": False},
+                "waf": {"status": "operational", "monitoring": False, "hardened": False},
+            },
+            "vulnerabilities": {}
+        },
+        "beginner_final_simulation": {
+            "title": "Beginner Module: Combined Guided Scenario",
+            "description": "Combine signals, hypotheses, actions, and metrics in one run.",
+            "initial_state": {"pressure": 18, "stability": 95},
+            "system_components": {
+                "web_server": {"status": "operational", "monitoring": False, "hardened": False},
+                "database": {"status": "operational", "monitoring": False, "hardened": False},
+                "waf": {"status": "operational", "monitoring": False, "hardened": False},
+            },
+            "vulnerabilities": {}
         }
     }
 
@@ -182,6 +243,8 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
 
     if scenario_id == "level_0_tutorial":
         return _configure_tutorial_scenario(base, mode)
+    if scenario_id.startswith("beginner_"):
+        return _configure_beginner_module(base, scenario_id)
     if scenario_id in {"beginner_input_basics", "beginner_rate_limit_basics", "beginner_auth_basics"}:
         return _configure_beginner_basics(base, scenario_id, mode)
     if scenario_id == "intermediate_signal_fusion":
@@ -198,6 +261,116 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
         return _configure_playground_trust(base, difficulty)
 
     return base
+
+
+def _configure_beginner_module(base: Dict[str, Any], scenario_id: str) -> Dict[str, Any]:
+    """Beginner modules: low complexity, single concept focus, soft penalties."""
+    config = base.copy()
+    config["ai_persona"] = AIPersona.DEFENDER
+    config["ai_difficulty"] = AIDifficulty.RULE_BASED
+
+    if scenario_id == "beginner_signals":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_signal_visibility",
+                "label": "System logs expose active defense signals",
+                "description": "If I inspect logs first, I can identify active state changes.",
+                "correct": True,
+                "evidence_required": ["act_observe_logs"],
+                "why_correct": "Correct: logs/state showed active behavior shifts before escalation.",
+                "why_wrong": "Not yet: gather signal evidence first, then test again."
+            }
+        ]
+        config["actions"] = [
+            {"id": "act_observe_logs", "label": "Observe logs", "description": "Review event logs for active signals.", "type": "inspect", "pressure_delta": 1},
+            {"id": "act_check_state", "label": "Check system state", "description": "Read current state conditions.", "type": "monitor", "pressure_delta": 0},
+        ]
+    elif scenario_id == "beginner_hypothesis":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_validation_change",
+                "label": "Validation tightened after suspicious probes",
+                "description": "Repeated probe behavior triggers tighter validation controls.",
+                "correct": True,
+                "evidence_required": ["act_safe_probe"],
+                "why_correct": "Correct: the system tightened validation after probing signals.",
+                "why_wrong": "Close, but validate after performing the probe step."
+            }
+        ]
+        config["actions"] = [
+            {"id": "act_safe_probe", "label": "Run safe probe", "description": "Low-risk probe to gather behavior evidence.", "type": "probe", "pressure_delta": 1},
+            {"id": "act_compare_responses", "label": "Compare responses", "description": "Inspect before/after behavior changes.", "type": "inspect", "pressure_delta": 1},
+        ]
+    elif scenario_id == "beginner_actions":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_action_tradeoff",
+                "label": "Escalate actions are stronger but riskier",
+                "description": "Action type affects pressure and system reaction.",
+                "correct": True,
+                "evidence_required": ["act_low_risk_check"],
+                "why_correct": "Correct: action type changes system reaction and risk profile.",
+                "why_wrong": "Observe both low-risk and high-risk action outcomes first."
+            }
+        ]
+        config["actions"] = [
+            {"id": "act_low_risk_check", "label": "Low-risk inspect", "description": "Safe inspection with minimal pressure impact.", "type": "inspect", "pressure_delta": 0},
+            {"id": "act_high_risk_push", "label": "High-risk escalate", "description": "More forceful action with higher pressure impact.", "type": "escalate", "pressure_delta": 4, "stability_delta": -1},
+        ]
+    elif scenario_id == "beginner_cause_effect":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_cause_effect_trace",
+                "label": "Action patterns directly trigger defense reactions",
+                "description": "Repeated behavior causes visible condition changes.",
+                "correct": True,
+                "evidence_required": ["act_repeat_probe"],
+                "why_correct": "Correct: repeated probes caused a clear defense-side response.",
+                "why_wrong": "Repeat one action pattern and watch for condition updates."
+            }
+        ]
+        config["actions"] = [
+            {"id": "act_repeat_probe", "label": "Repeat probe pattern", "description": "Use similar probes to trigger measurable response.", "type": "probe", "pressure_delta": 2},
+            {"id": "act_monitor_reaction", "label": "Monitor reaction", "description": "Observe what changed after the probe pattern.", "type": "monitor", "pressure_delta": 0},
+        ]
+    elif scenario_id == "beginner_metrics":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_metric_movement",
+                "label": "Pressure rises with risky actions and stability falls under strain",
+                "description": "Metrics reflect consequences of tactical choices.",
+                "correct": True,
+                "evidence_required": ["act_metric_probe"],
+                "why_correct": "Correct: metric shifts reflected your action trade-offs.",
+                "why_wrong": "Track pressure/stability across actions and compare outcomes."
+            }
+        ]
+        config["actions"] = [
+            {"id": "act_metric_probe", "label": "Controlled probe", "description": "Take a controlled action and read metric changes.", "type": "probe", "pressure_delta": 1},
+            {"id": "act_metric_stress", "label": "Stress action", "description": "Higher-risk action to see stronger metric impact.", "type": "escalate", "pressure_delta": 5, "stability_delta": -3},
+        ]
+    else:
+        config["hypotheses"] = [
+            {
+                "id": "hyp_final_loop",
+                "label": "Observe -> Hypothesize -> Act -> Reflect yields stable progress",
+                "description": "Combining the full reasoning loop improves outcomes.",
+                "correct": True,
+                "evidence_required": ["act_final_observe"],
+                "why_correct": "Correct: structured reasoning produced reliable progress.",
+                "why_wrong": "Follow the full loop before concluding."
+            }
+        ]
+        config["actions"] = [
+            {"id": "act_final_observe", "label": "Observe system signals", "description": "Start by collecting evidence.", "type": "inspect", "pressure_delta": 1},
+            {"id": "act_final_test", "label": "Test focused action", "description": "Run one targeted action based on evidence.", "type": "probe", "pressure_delta": 2},
+            {"id": "act_final_reflect", "label": "Reflect and adapt", "description": "Check metrics and adjust your next decision.", "type": "monitor", "pressure_delta": 0},
+        ]
+
+    config["win_conditions"] = [{"type": "hypothesis_validated", "target": "all_core_hypotheses"}]
+    config["loss_conditions"] = [{"type": "pressure_threshold", "target": 100}]
+    config["max_phase"] = 3
+    return config
 
 
 def _configure_guided_simulation_trust(base: Dict[str, Any], difficulty: str) -> Dict[str, Any]:

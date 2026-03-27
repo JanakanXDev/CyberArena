@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Action, ExperienceMode, Hypothesis } from '../../types/game';
-import { Crosshair, Lock, Brain, Check } from 'lucide-react';
+import { Crosshair, Lock, Brain, Check, ChevronDown, Zap, Search, Eye, Shield } from 'lucide-react';
 import { JargonText } from './JargonText';
 
 interface ActionPanelProps {
@@ -24,6 +24,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   const [lockedHint, setLockedHint] = useState<string | null>(null);
   const [pulseHypotheses, setPulseHypotheses] = useState(false);
   const [lastActionCount, setLastActionCount] = useState(actionHistory.length);
+  const [showHypothesisBuilder, setShowHypothesisBuilder] = useState(true);
 
   // Trigger brief pulse animation on hypotheses when an action completes
   useEffect(() => {
@@ -61,8 +62,16 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
     'Authentication retries are being restricted'
   ];
 
+  const iconForActionType = (type: string) => {
+    const t = (type || '').toLowerCase();
+    if (t.includes('probe') || t.includes('inspect')) return Search;
+    if (t.includes('monitor')) return Eye;
+    if (t.includes('isolate') || t.includes('restrict')) return Shield;
+    return Zap;
+  };
+
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="flex flex-col gap-4">
       {/* Beginner Guide Tip */}
       {completedActions === 0 && (
         <div className="shrink-0 bg-yellow-900/20 border-b border-yellow-700/30 px-4 py-2 flex gap-2 items-start">
@@ -81,114 +90,20 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
         </div>
       )}
 
-      {/* Hypothesis Input Section */}
-      <div className="shrink-0 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-b-2 border-purple-500/50 px-6 py-4">
+      {/* Actions Section - PRIMARY INTERACTION */}
+      <div className="px-4 py-4 border border-emerald-900/40 rounded-lg bg-gradient-to-r from-emerald-950/25 to-transparent">
         <div className="flex items-center gap-2 mb-3">
-          <Brain className="w-5 h-5 text-purple-400" />
-          <span className="text-sm font-bold text-purple-400 uppercase tracking-widest">
-            {experienceMode === 'beginner' ? 'Guided Hypothesis Builder' : 'Form Hypotheses'}
-          </span>
-        </div>
-
-        {experienceMode === 'beginner' && (
-          <div className="mb-3">
-            <p className="text-[11px] text-slate-300 mb-2">The system behavior suggests:</p>
-            <div className="flex flex-wrap gap-2">
-              {beginnerSuggestions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={() => onAction(`hypothesis_text:${s}`)}
-                  className="px-2 py-1 rounded border border-purple-700/40 bg-purple-900/20 hover:bg-purple-800/30 text-xs text-purple-200 disabled:opacity-50"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <form onSubmit={handleNlpSubmit} className="flex gap-2 mb-4 relative z-20">
-          <input
-            type="text"
-            value={nlpInput}
-            onChange={(e) => setNlpInput(e.target.value)}
-            disabled={isProcessing}
-            placeholder={
-              isProcessing
-                ? 'Validating theory with LLM...'
-                : experienceMode === 'beginner'
-                ? 'Simple sentence: e.g. input validation is active'
-                : experienceMode === 'intermediate'
-                ? 'Describe your reasoning briefly and clearly...'
-                : 'e.g. The attacker used a SQL injection to bypass login...'
-            }
-            className="flex-1 bg-[#161618] border border-slate-700 rounded p-3 text-sm text-slate-200 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all font-mono placeholder:font-sans placeholder:text-slate-600 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!nlpInput.trim() || isProcessing}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold uppercase tracking-widest text-xs rounded transition-colors"
-          >
-            {isProcessing ? 'Processing' : 'Submit'}
-          </button>
-        </form>
-
-        {/* Tested Hypotheses Log */}
-        {hypotheses.filter(h => h.tested).length > 0 && (
-          <div className="space-y-3 mt-4 max-h-32 overflow-y-auto pr-2 border-t border-purple-900/40 pt-4">
-            {hypotheses.filter(h => h.tested).map((hyp) => (
-              <div
-                key={hyp.id}
-                className={`w-full text-left p-3 rounded-lg border flex flex-col gap-2 ${
-                  hyp.validated === true
-                    ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-300'
-                    : 'bg-red-900/20 border-red-500/30 text-red-300'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="text-xs font-bold leading-relaxed">{hyp.label}</div>
-                  </div>
-                  <div className={`text-base font-bold ${hyp.validated === true ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {hyp.validated === true ? '✓' : '✗'}
-                  </div>
-                </div>
-                
-                {hyp.explanation && (
-                  <div
-                    className={`p-2 rounded border text-[10px] leading-relaxed ${hyp.validated === true
-                      ? 'bg-emerald-950/40 border-emerald-700/20 text-emerald-200/80'
-                      : 'bg-red-950/40 border-red-700/20 text-red-200/80'
-                      }`}
-                  >
-                    <div className="font-bold uppercase tracking-widest mb-1 opacity-80">
-                      {hyp.validated ? 'Match' : 'Rejected'}
-                    </div>
-                    <JargonText text={hyp.explanation} maxHighlights={2} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Actions Section - Scrollable */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
-        <div className="flex items-center gap-2 mb-4 sticky top-0 bg-[#161618] pb-2 z-10">
           <Crosshair className="w-4 h-4 text-emerald-400" />
           <span className="text-sm font-bold text-emerald-400 uppercase tracking-widest">
             Available Actions
           </span>
-          <span className="text-xs text-slate-500 ml-auto">
+          <span className="text-xs text-emerald-200/70 ml-auto">
             ({actions.filter(a => a.available).length} available)
           </span>
         </div>
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
           {actions.length === 0 ? (
-            <div className="text-slate-600 text-sm text-center py-8">
+            <div className="col-span-full text-slate-600 text-sm text-center py-6">
               No actions available. {hypotheses.length > 0 ? 'Form a hypothesis first.' : 'Loading actions...'}
             </div>
           ) : (
@@ -205,7 +120,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                   <div
                     key={action.id}
                     onClick={() => showLockedFeedback(action.id)}
-                    className="w-full text-left border border-slate-800 bg-[#0f0f10] rounded-lg p-4 opacity-60 cursor-pointer hover:opacity-80 hover:border-amber-800/50 transition-all"
+                    className="w-full text-left border border-slate-800 bg-[#0f0f10] rounded-lg p-3 opacity-60 cursor-pointer hover:opacity-80 hover:border-amber-800/50 transition-all"
                   >
                     <div className="flex items-center gap-2 mb-1 text-slate-500">
                       <Lock className="w-3 h-3" />
@@ -225,7 +140,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                 return (
                   <div
                     key={action.id}
-                    className="w-full text-left border border-emerald-900/40 bg-emerald-950/20 rounded-lg p-4 opacity-70 transition-all pointer-events-none"
+                    className="w-full text-left border border-emerald-900/40 bg-emerald-950/20 rounded-lg p-3 opacity-75 transition-all pointer-events-none"
                   >
                     <div className="flex justify-between items-start mb-2">
                       <span className="font-bold text-sm text-emerald-400">
@@ -257,10 +172,10 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                       onAction(action.id);
                     }
                   }}
-                  className={`w-full text-left border-2 border-slate-700 bg-[#1f1f22] rounded-lg p-4 transition-all group relative z-10 ${
+                  className={`w-full text-left border-2 border-emerald-700/70 bg-[#1f1f22] rounded-lg p-3 transition-all group relative z-10 shadow-[0_0_0_1px_rgba(16,185,129,0.15)] ${
                     isProcessing 
                       ? 'opacity-50 cursor-not-allowed' 
-                      : 'hover:bg-[#252529] hover:border-emerald-500 cursor-pointer active:scale-95'
+                      : 'hover:bg-[#252529] hover:border-emerald-400 hover:shadow-[0_0_16px_rgba(16,185,129,0.22)] cursor-pointer active:scale-95'
                   }`}
                   style={{ pointerEvents: 'auto', WebkitTapHighlightColor: 'transparent' }}
                   aria-label={`Action: ${action.label}`}
@@ -269,7 +184,9 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                     <span className="font-bold text-sm text-slate-200 group-hover:text-emerald-400 transition-colors">
                       {action.label}
                     </span>
-                    <Crosshair className="w-4 h-4 text-slate-600 group-hover:text-emerald-500 transition-colors" />
+                    {React.createElement(iconForActionType(action.type), {
+                      className: "w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-colors"
+                    })}
                   </div>
                   <p className="text-xs text-slate-400">
                     <JargonText text={action.description} maxHighlights={2} />
@@ -292,6 +209,99 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             })
           )}
         </div>
+      </div>
+
+      {/* Hypothesis Builder - SECONDARY / COLLAPSIBLE */}
+      <div className="border border-slate-800/80 rounded-lg overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowHypothesisBuilder(v => !v)}
+          className="w-full px-4 py-2.5 flex items-center justify-between bg-slate-900/65 border-b border-slate-800 hover:bg-slate-800/70 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4 text-purple-400" />
+            <span className="text-xs font-bold text-purple-300 uppercase tracking-widest">
+              Guided Hypothesis Builder
+            </span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showHypothesisBuilder ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showHypothesisBuilder && (
+          <div className="px-5 py-4 bg-gradient-to-r from-purple-900/20 to-blue-900/10">
+            {experienceMode === 'beginner' && (
+              <div className="mb-3">
+                <p className="text-[11px] text-slate-300 mb-2">The system behavior suggests:</p>
+                <div className="flex flex-wrap gap-2">
+                  {beginnerSuggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => onAction(`hypothesis_text:${s}`)}
+                      className="px-2 py-1 rounded border border-purple-700/40 bg-purple-900/20 hover:bg-purple-800/30 text-xs text-purple-200 disabled:opacity-50"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleNlpSubmit} className="flex gap-2 mb-3 relative z-20">
+              <input
+                type="text"
+                value={nlpInput}
+                onChange={(e) => setNlpInput(e.target.value)}
+                disabled={isProcessing}
+                placeholder={
+                  isProcessing
+                    ? 'Validating theory...'
+                    : experienceMode === 'beginner'
+                    ? 'Simple sentence: input validation is active'
+                    : experienceMode === 'intermediate'
+                    ? 'Describe your reasoning briefly and clearly...'
+                    : 'Describe your hypothesis...'
+                }
+                className="flex-1 bg-[#161618] border border-slate-700 rounded p-2.5 text-sm text-slate-200 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all font-mono placeholder:text-slate-600 disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!nlpInput.trim() || isProcessing}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold uppercase tracking-widest text-xs rounded transition-colors"
+              >
+                Submit
+              </button>
+            </form>
+
+            {hypotheses.filter(h => h.tested).length > 0 && (
+              <div className={`space-y-2 border-t border-purple-900/40 pt-3 ${pulseHypotheses ? 'animate-pulse' : ''}`}>
+                {hypotheses.filter(h => h.tested).map((hyp) => (
+                  <div
+                    key={hyp.id}
+                    className={`w-full text-left p-2.5 rounded-lg border flex flex-col gap-2 ${
+                      hyp.validated === true
+                        ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-300'
+                        : 'bg-red-900/20 border-red-500/30 text-red-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-xs font-bold leading-relaxed">{hyp.label}</div>
+                      <div className={`text-base font-bold ${hyp.validated === true ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {hyp.validated === true ? '✓' : '✗'}
+                      </div>
+                    </div>
+                    {hyp.explanation && (
+                      <div className="text-[10px] text-slate-300">
+                        <JargonText text={hyp.explanation} maxHighlights={2} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

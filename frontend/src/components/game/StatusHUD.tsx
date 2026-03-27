@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, BookOpen, Layers, Activity } from 'lucide-react';
 
 interface StatusHUDProps {
@@ -43,6 +43,7 @@ export const StatusHUD: React.FC<StatusHUDProps> = ({
   sessionStatus,
   reflectionSummary
 }) => {
+  const [showSignals, setShowSignals] = useState(true);
   const activeSignals = Object.entries(systemConditions || {})
     .filter(([, active]) => active)
     .map(([key]) => CONDITION_LABELS[key] || key);
@@ -102,15 +103,22 @@ export const StatusHUD: React.FC<StatusHUDProps> = ({
           </div>
         </div>
 
-        {/* System Signals */}
+        {/* System Signals (collapsible) */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setShowSignals(v => !v)}
+            className="w-full flex items-center justify-between gap-2 mb-3 bg-slate-900/50 border border-slate-800 rounded px-2 py-1.5 hover:bg-slate-800/50"
+          >
+            <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-emerald-400" />
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
               System Signals
             </span>
-          </div>
-          {activeSignals.length === 0 ? (
+            </div>
+            <span className="text-[10px] text-slate-500">{showSignals ? 'Hide' : 'Show'}</span>
+          </button>
+          {showSignals && (activeSignals.length === 0 ? (
             <div className="text-xs text-slate-600">No visible behavioral signals.</div>
           ) : (
             <div className="space-y-2">
@@ -123,7 +131,7 @@ export const StatusHUD: React.FC<StatusHUDProps> = ({
                 </div>
               ))}
             </div>
-          )}
+          ))}
         </div>
 
         {/* User Assumptions */}

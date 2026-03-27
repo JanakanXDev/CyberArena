@@ -10,6 +10,7 @@ from simulation_engine import SimulationEngine, LearningMode, Hypothesis, Phase,
 from ai_systems import OpponentAI, MentorAI, AIPersona, AIDifficulty
 from scenario_system import get_scenario_config
 from learning_analytics import LearningAnalytics, LearningSession
+from beginner_learning import is_beginner_module, learning_path_payload, step_feedback_payload
 
 # Global state
 current_engine: SimulationEngine = None
@@ -228,6 +229,12 @@ def _engine_state_to_api_response(
         "hypothesisEvaluation": hypothesis_evaluation,
     }
 
+    if is_beginner_module(engine.scenario_id):
+        response["beginnerLearningPath"] = learning_path_payload(engine.scenario_id)
+        response["beginnerStepFeedback"] = step_feedback_payload(
+            engine.state, engine.available_actions, engine.scenario_id
+        )
+
     if response["sessionStatus"] == "collapsed":
         response["reflectionSummary"] = current_analytics.generate_reflection_summary(
             engine.state,
@@ -242,9 +249,12 @@ def _get_scenario_name(scenario_id: str) -> str:
     """Get scenario display name"""
     names = {
         "level_0_tutorial": "Level 0: The Evidence Loop",
-        "beginner_input_basics": "Beginner: Input Validation Basics",
-        "beginner_rate_limit_basics": "Beginner: Rate Limit Basics",
-        "beginner_auth_basics": "Beginner: Authentication Basics",
+        "beginner_signals": "Beginner Module: System Signals",
+        "beginner_hypothesis": "Beginner Module: Hypothesis Formation",
+        "beginner_actions": "Beginner Module: Actions Understanding",
+        "beginner_cause_effect": "Beginner Module: Cause & Effect",
+        "beginner_metrics": "Beginner Module: Metrics",
+        "beginner_final_simulation": "Beginner Module: Final Simulation",
         "intermediate_signal_fusion": "Intermediate: Signal Fusion",
         "input_trust_failures": "Operation: Broken Trust",
         "linux_privesc": "Operation: Glass Ceiling",

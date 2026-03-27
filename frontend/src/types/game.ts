@@ -117,6 +117,8 @@ export interface GameState {
 
   // Additive hypothesis evaluation envelope (optional, backend-provided)
   hypothesisEvaluation?: HypothesisEvaluation;
+  beginnerLearningPath?: BeginnerLearningPath;
+  beginnerStepFeedback?: BeginnerStepFeedback;
 }
 
 export interface StrategicDebrief {
@@ -161,4 +163,21 @@ export interface HypothesisEvaluation {
   feedback: string;
   hint: string;
   matched_signals: string[];
+}
+
+export interface BeginnerLearningPath {
+  title: string;
+  moduleOrder: Array<{ id: string; name: string }>;
+  currentModuleId: string;
+  currentModuleName: string;
+  currentModuleGoal: string;
+  currentModulePrompt: string;
+  moduleIndex: number;
+  totalModules: number;
+}
+
+export interface BeginnerStepFeedback {
+  what_happened: string;
+  why_it_happened: string;
+  what_it_means: string;
 }

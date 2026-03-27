@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Dashboard } from '../layout/Dashboard';
 import { BriefingScreen } from './BriefingScreen';
@@ -52,6 +52,14 @@ export const GameSession = () => {
   }, [mode, difficulty, scenarioId, experienceMode]);
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const beginnerModuleIds = [
+    'beginner_signals',
+    'beginner_hypothesis',
+    'beginner_actions',
+    'beginner_cause_effect',
+    'beginner_metrics',
+    'beginner_final_simulation',
+  ];
 
   const handleAction = async (input: string) => {
     if (gameState.sessionStatus === 'collapsed' || gameState.missionComplete || isProcessing) return;
@@ -66,6 +74,23 @@ export const GameSession = () => {
       setIsProcessing(false);
     }
   };
+
+  useEffect(() => {
+    if (!gameState?.scenarioId || gameState?.scenarioState !== 'victory') return;
+    if (!beginnerModuleIds.includes(gameState.scenarioId)) return;
+    try {
+      const raw = localStorage.getItem('beginner_learning_path_progress') || '[]';
+      const completed = JSON.parse(raw) as string[];
+      if (!completed.includes(gameState.scenarioId)) {
+        localStorage.setItem(
+          'beginner_learning_path_progress',
+          JSON.stringify([...completed, gameState.scenarioId])
+        );
+      }
+    } catch {
+      // Ignore storage errors and keep gameplay functional.
+    }
+  }, [gameState]);
 
   if (phase === 'briefing') {
     return (
