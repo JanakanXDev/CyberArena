@@ -15,11 +15,12 @@ def start_game():
         difficulty = data.get('difficulty', 'medium')
         scenario_id = data.get('scenarioId', 'input_trust_failures')
         stage_index = data.get('stageIndex', 0)
+        experience_mode = data.get('experienceMode', 'advanced')
         
         print(f"Starting simulation: mode={mode}, scenario={scenario_id}, difficulty={difficulty}")
         
         # Reset game logic
-        state = engine.reset_game(mode, difficulty, scenario_id, stage_index)
+        state = engine.reset_game(mode, difficulty, scenario_id, stage_index, experience_mode)
         return jsonify(state)
         
     except Exception as e:
@@ -48,7 +49,7 @@ def handle_action():
         data = request.json
         action_input = data.get('actionId') or data.get('command') or data.get('input')
         print(f"Processing action: {action_input}")
-        new_state = engine.process_action(action_input)
+        new_state = engine.process_action(action_input, data)
         return jsonify(new_state)
     except Exception as e:
         print("!!! ACTION CRASHED !!!")

@@ -32,6 +32,99 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
             },
             "vulnerabilities": {}
         },
+        "beginner_input_basics": {
+            "title": "Beginner: Input Validation Basics",
+            "description": "A simple form service where malformed input is either accepted or blocked.",
+            "initial_state": {
+                "pressure": 0,
+                "stability": 100
+            },
+            "system_components": {
+                "web_form": {"status": "operational", "monitoring": False, "hardened": False},
+                "validator": {"status": "operational", "monitoring": False, "hardened": False}
+            },
+            "vulnerabilities": {
+                "input_boundary": {
+                    "active": True,
+                    "severity": "low",
+                    "false_lead": False,
+                    "interactions": []
+                }
+            }
+        },
+        "beginner_rate_limit_basics": {
+            "title": "Beginner: Rate Limit Basics",
+            "description": "A public API with straightforward request throttling behavior.",
+            "initial_state": {
+                "pressure": 5,
+                "stability": 100
+            },
+            "system_components": {
+                "api_gateway": {"status": "operational", "monitoring": True, "hardened": False},
+                "rate_limiter": {"status": "operational", "monitoring": True, "hardened": False}
+            },
+            "vulnerabilities": {
+                "rate_window": {
+                    "active": True,
+                    "severity": "low",
+                    "false_lead": False,
+                    "interactions": []
+                }
+            }
+        },
+        "beginner_auth_basics": {
+            "title": "Beginner: Authentication Basics",
+            "description": "A login flow with clear lockout and retry signals.",
+            "initial_state": {
+                "pressure": 10,
+                "stability": 95
+            },
+            "system_components": {
+                "auth_service": {"status": "operational", "monitoring": True, "hardened": False},
+                "session_store": {"status": "operational", "monitoring": False, "hardened": False}
+            },
+            "vulnerabilities": {
+                "auth_retry_window": {
+                    "active": True,
+                    "severity": "low",
+                    "false_lead": False,
+                    "interactions": []
+                }
+            }
+        },
+        "intermediate_signal_fusion": {
+            "title": "Intermediate: Signal Fusion",
+            "description": "Multiple mild signals must be combined to infer true system posture.",
+            "initial_state": {
+                "pressure": 15,
+                "stability": 92
+            },
+            "system_components": {
+                "web_server": {"status": "operational", "monitoring": True, "hardened": False},
+                "api_gateway": {"status": "operational", "monitoring": True, "hardened": False},
+                "database": {"status": "operational", "monitoring": False, "hardened": False}
+            },
+            "vulnerabilities": {
+                "input_boundary": {
+                    "active": True,
+                    "severity": "medium",
+                    "false_lead": False,
+                    "interactions": ["decision_path_influence"]
+                },
+                "reflection_surface": {
+                    "active": True,
+                    "severity": "low",
+                    "false_lead": True,
+                    "interactions": []
+                },
+                "decision_path_influence": {
+                    "active": True,
+                    "severity": "medium",
+                    "false_lead": False,
+                    "interactions": ["input_boundary"]
+                }
+            }
+        },
         "input_trust_failures": {
             "title": "Operation: Broken Trust",
             "description": "Legacy admin portal with brittle input handling",
@@ -70,7 +163,12 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
     base = base_scenarios.get(scenario_id, base_scenarios["input_trust_failures"])
 
     # Phase 1: BREAK DETERMINISM (Randomize boot state parameters)
-    if scenario_id != "level_0_tutorial":
+    if scenario_id not in {
+        "level_0_tutorial",
+        "beginner_input_basics",
+        "beginner_rate_limit_basics",
+        "beginner_auth_basics",
+    }:
         # Randomize baseline pressure
         base["initial_state"]["pressure"] = max(0, base["initial_state"]["pressure"] + random.randint(-5, 10))
         
@@ -84,6 +182,10 @@ def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -
 
     if scenario_id == "level_0_tutorial":
         return _configure_tutorial_scenario(base, mode)
+    if scenario_id in {"beginner_input_basics", "beginner_rate_limit_basics", "beginner_auth_basics"}:
+        return _configure_beginner_basics(base, scenario_id, mode)
+    if scenario_id == "intermediate_signal_fusion":
+        return _configure_intermediate_signal_fusion(base, mode)
 
     # Configure strictly based on mode to enforce distinct mental environments
     if mode == LearningMode.GUIDED_SIMULATION:
@@ -442,14 +544,24 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
         
     # Ensure role-specific actions are always available (preventing dead states)
     if role == "attacker":
-        focused_actions.append({
-            "id": f"act_focused_attack_{component}",
-            "label": f"[{component.upper()}] Launch directed exploit",
-            "description": f"Test edge-case vulnerabilities specifically on {component}",
-            "type": "escalate",
-            "pressure_delta": 10,
-            "stability_delta": -5
-        })
+        if scenario_id.startswith("beginner_"):
+            focused_actions.append({
+                "id": f"act_focused_attack_{component}",
+                "label": f"[{component.upper()}] Test system behavior safely",
+                "description": f"Run a low-risk observation against {component} to collect signals.",
+                "type": "inspect",
+                "pressure_delta": 1,
+                "stability_delta": 0
+            })
+        else:
+            focused_actions.append({
+                "id": f"act_focused_attack_{component}",
+                "label": f"[{component.upper()}] Launch directed exploit",
+                "description": f"Test edge-case vulnerabilities specifically on {component}",
+                "type": "escalate",
+                "pressure_delta": 10,
+                "stability_delta": -5
+            })
     elif role == "defender":
         focused_actions.append({
             "id": f"act_focused_defend_{component}",
@@ -465,7 +577,13 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
     loss_conditions = []
     max_phase = 5
     
-    if mode == LearningMode.GUIDED_SIMULATION:
+    # Special case: Tutorial always uses its own win condition regardless of mode.
+    # This ensures the tutorial is winnable by validating hyp_tutorial in any mode.
+    if scenario_id == "level_0_tutorial":
+        win_conditions = [{"type": "hypothesis_validated", "hypothesis_id": "hyp_tutorial"}]
+        loss_conditions = [{"type": "pressure_threshold", "target": 100}]
+        max_phase = 3
+    elif mode == LearningMode.GUIDED_SIMULATION:
         win_conditions = [{"type": "hypothesis_validated", "target": "all_core_hypotheses"}]
         loss_conditions = [{"type": "pressure_threshold", "target": 100}]
         max_phase = 3
@@ -488,6 +606,7 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
         win_conditions = [] # Sandbox mode never auto-ends intentionally
         loss_conditions = []
         max_phase = 99
+
         
     return {
         "actions": focused_actions,
@@ -536,4 +655,161 @@ def _configure_tutorial_scenario(base: Dict[str, Any], mode: LearningMode) -> Di
         "hypothesis_id": "hyp_tutorial"
     }]
     
+    return config
+
+
+def _configure_beginner_basics(base: Dict[str, Any], scenario_id: str, mode: LearningMode) -> Dict[str, Any]:
+    """Beginner scenarios: simple signals, clear low-risk actions, no deception."""
+    config = base.copy()
+    config["ai_persona"] = AIPersona.DEFENDER if mode != LearningMode.DEFENDER_CAMPAIGN else AIPersona.ATTACKER
+    config["ai_difficulty"] = AIDifficulty.RULE_BASED
+
+    if scenario_id == "beginner_input_basics":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_beginner_input_validation",
+                "label": "Input validation is active before request processing",
+                "description": "Malformed input is blocked early by validation.",
+                "correct": True,
+                "evidence_required": ["act_beginner_test_input"],
+                "why_correct": "Correct. Invalid input is filtered before core logic executes.",
+                "why_wrong": "Not quite. The observed behavior shows early filtering, not late rejection."
+            },
+            {
+                "id": "hyp_beginner_errors_verbose",
+                "label": "The system returns verbose internal error details",
+                "description": "Error messages should expose internals if this is true.",
+                "correct": False,
+                "evidence_required": ["act_beginner_check_error"],
+                "why_correct": "You observed detailed errors in this run.",
+                "why_wrong": "The system returns generic errors, not internal details."
+            }
+        ]
+        config["actions"] = [
+            {
+                "id": "act_beginner_test_input",
+                "label": "Test how input is handled",
+                "description": "Submit simple malformed input and observe acceptance or rejection.",
+                "type": "inspect",
+                "pressure_delta": 1
+            },
+            {
+                "id": "act_beginner_check_error",
+                "label": "Check error message style",
+                "description": "Trigger a harmless validation error and read the response pattern.",
+                "type": "monitor",
+                "pressure_delta": 1
+            }
+        ]
+    elif scenario_id == "beginner_rate_limit_basics":
+        config["hypotheses"] = [
+            {
+                "id": "hyp_beginner_rate_limit",
+                "label": "Requests are being rate limited by request frequency",
+                "description": "Burst traffic should trigger temporary throttling.",
+                "correct": True,
+                "evidence_required": ["act_beginner_send_burst"],
+                "why_correct": "Correct. The gateway throttles rapid request bursts.",
+                "why_wrong": "The key signal is burst throttling; this indicates active rate limiting."
+            }
+        ]
+        config["actions"] = [
+            {
+                "id": "act_beginner_send_burst",
+                "label": "Send a short request burst",
+                "description": "Issue a quick burst and observe whether responses slow down or block.",
+                "type": "probe",
+                "pressure_delta": 2
+            },
+            {
+                "id": "act_beginner_send_spaced",
+                "label": "Send spaced requests",
+                "description": "Compare with slower requests to see if throttling eases.",
+                "type": "monitor",
+                "pressure_delta": 1
+            }
+        ]
+    else:  # beginner_auth_basics
+        config["hypotheses"] = [
+            {
+                "id": "hyp_beginner_auth_lockout",
+                "label": "Authentication retries trigger temporary lockout",
+                "description": "Repeated failed attempts should activate lockout timing.",
+                "correct": True,
+                "evidence_required": ["act_beginner_auth_retries"],
+                "why_correct": "Correct. Repeated failures trigger temporary lockout behavior.",
+                "why_wrong": "Observed timing indicates lockout behavior after repeated failures."
+            }
+        ]
+        config["actions"] = [
+            {
+                "id": "act_beginner_auth_retries",
+                "label": "Test login retry behavior",
+                "description": "Perform safe failed attempts and watch lockout timing.",
+                "type": "inspect",
+                "pressure_delta": 2
+            },
+            {
+                "id": "act_beginner_session_check",
+                "label": "Check session reset behavior",
+                "description": "Observe if session context resets after failed auth.",
+                "type": "monitor",
+                "pressure_delta": 1
+            }
+        ]
+
+    return config
+
+
+def _configure_intermediate_signal_fusion(base: Dict[str, Any], mode: LearningMode) -> Dict[str, Any]:
+    """Intermediate scenario: moderate complexity, mild deception, partial guidance."""
+    config = base.copy()
+    config["ai_persona"] = AIPersona.DEFENDER if mode != LearningMode.DEFENDER_CAMPAIGN else AIPersona.ATTACKER
+    config["ai_difficulty"] = AIDifficulty.ADAPTIVE
+
+    config["hypotheses"] = [
+        {
+            "id": "hyp_intermediate_validation_shift",
+            "label": "Validation policy tightened after repeated probes",
+            "description": "The system appears to adapt after repeated probing patterns.",
+            "correct": True,
+            "evidence_required": ["act_intermediate_probe_sequence"],
+            "why_correct": "Correct. Repeated probes caused adaptive tightening behavior.",
+            "why_wrong": "You are close. Re-check timing and validation signal transitions."
+        },
+        {
+            "id": "hyp_intermediate_decoy_path",
+            "label": "Primary error path is a decoy and not exploitable",
+            "description": "Some signals are intentionally noisy and distractive.",
+            "correct": False,
+            "evidence_required": ["act_intermediate_error_compare"],
+            "why_correct": "This run showed decoy-like behavior.",
+            "why_wrong": "The path is noisy, but still reflects real processing behavior here."
+        }
+    ]
+
+    config["actions"] = [
+        {
+            "id": "act_intermediate_probe_sequence",
+            "label": "Run a controlled probe sequence",
+            "description": "Probe in a consistent cadence and observe adaptation signals.",
+            "type": "probe",
+            "pressure_delta": 3
+        },
+        {
+            "id": "act_intermediate_error_compare",
+            "label": "Compare error response patterns",
+            "description": "Check differences between malformed and edge-case requests.",
+            "type": "inspect",
+            "pressure_delta": 2
+        },
+        {
+            "id": "act_intermediate_stability_watch",
+            "label": "Watch stability and timing signals",
+            "description": "Correlate stability shifts with policy changes before escalating.",
+            "type": "monitor",
+            "pressure_delta": 1
+        }
+    ]
+
     return config

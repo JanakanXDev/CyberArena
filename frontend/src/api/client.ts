@@ -1,4 +1,4 @@
-import { GameState, LearningMode } from '../types/game';
+import { ExperienceMode, GameState, LearningMode } from '../types/game';
 
 const API_URL = 'http://localhost:5000';
 
@@ -8,9 +8,10 @@ export const api = {
     mode: LearningMode = 'guided_simulation',
     difficulty: string = 'medium',
     scenarioId: string = 'input_trust_failures',
-    stageIndex: number = 0
+    stageIndex: number = 0,
+    experienceMode: ExperienceMode = 'advanced'
   ): Promise<GameState> => {
-    console.log('API: startGame called with:', { mode, difficulty, scenarioId, stageIndex });
+    console.log('API: startGame called with:', { mode, difficulty, scenarioId, stageIndex, experienceMode });
     console.log('API: Making request to:', `${API_URL}/start`);
 
     try {
@@ -21,7 +22,8 @@ export const api = {
           mode,
           difficulty,
           scenarioId,
-          stageIndex
+          stageIndex,
+          experienceMode
         }),
       });
 
@@ -43,7 +45,10 @@ export const api = {
   },
 
   // SEND ACTION: Send action, hypothesis, or command
-  sendAction: async (actionIdOrCommand: string): Promise<GameState> => {
+  sendAction: async (
+    actionIdOrCommand: string,
+    options?: { reasoning?: string }
+  ): Promise<GameState> => {
     console.log('API: sendAction called with:', actionIdOrCommand);
 
     try {
@@ -51,7 +56,8 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          actionId: actionIdOrCommand
+          actionId: actionIdOrCommand,
+          reasoning: options?.reasoning
         }),
       });
 

@@ -519,11 +519,18 @@ class SimulationEngine:
         won = False
         for cond in self.state.win_conditions:
             if cond.get("type") == "hypothesis_validated":
-                # Check if all hypotheses configured with 'correct=True' are validated
                 target = cond.get("target")
                 if target == "all_core_hypotheses":
+                    # Check if all hypotheses configured with 'correct=True' are validated
                     core_hyps = [h_id for h_id, hd in self._hypotheses_config.items() if hd.get("correct")]
                     if core_hyps and all(any(h.id == ch and h.validated for h in self.hypotheses) for ch in core_hyps):
+                        won = True
+                        break
+                else:
+                    required_hypothesis_id = cond.get("hypothesis_id")
+                    if required_hypothesis_id and any(
+                        h.id == required_hypothesis_id and h.validated for h in self.hypotheses
+                    ):
                         won = True
                         break
             elif cond.get("type") == "hypothesis_and_action":

@@ -1,0 +1,66 @@
+﻿python : Traceback 
+(most recent call 
+last):
+At line:1 char:1
++ python backend/test_a
+ll_modes_comprehensive.
+py 2>&1 | Out-File 
+-Encod ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (Traceback (mo   
+ st recent call las    
+t)::String) [], Re    
+moteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+  File "C:\Users\janak\
+OneDrive\Desktop\pro\cy
+ber-arena\backend\test_
+all_modes_comprehensive
+.py", line 229, in 
+<module>
+    print("\u2554\u2550
+\u2550\u2550\u2550\u255
+0\u2550\u2550\u2550\u25
+50\u2550\u2550\u2550\u2
+550\u2550\u2550\u2550\u
+2550\u2550\u2550\u2550\
+u2550\u2550\u2550\u2550
+\u2550\u2550\u2550\u255
+0\u2550\u2550\u2550\u25
+50\u2550\u2550\u2550\u2
+550\u2550\u2550\u2550\u
+2550\u2550\u2550\u2550\
+u2550\u2550\u2550\u2550
+\u2550\u2550\u2550\u255
+0\u2550\u2550\u2550\u25
+50\u2550\u2550\u2550\u2
+550\u2550\u2550\u2550\u
+2550\u2550\u2550\u2550\
+u2550\u2550\u2550\u2550
+\u2557")
+    ~~~~~^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^
+  File "C:\Python313\Li
+b\encodings\cp1252.py",
+ line 19, in encode
+    return codecs.charm
+ap_encode(input,self.er
+rors,encoding_table)[0]
+           ~~~~~~~~~~~~
+~~~~~~~~~^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode characters in 
+position 0-71: 
+character maps to 
+<undefined>

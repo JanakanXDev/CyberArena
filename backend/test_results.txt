@@ -1,0 +1,32 @@
+CYBERARENA COMPREHENSIVE TEST RESULTS
+==================================================
+
+[PASS] BOOT: guided_simulation x level_0_tutorial
+[PASS] BOOT: guided_simulation x input_trust_failures
+[PASS] BOOT: guided_simulation x linux_privesc
+[PASS] BOOT: guided_simulation x network_breach
+[PASS] BOOT: attacker_campaign x level_0_tutorial
+[PASS] BOOT: attacker_campaign x input_trust_failures
+[PASS] BOOT: attacker_campaign x linux_privesc
+[PASS] BOOT: attacker_campaign x network_breach
+[PASS] BOOT: defender_campaign x level_0_tutorial
+[PASS] BOOT: defender_campaign x input_trust_failures
+[PASS] BOOT: defender_campaign x linux_privesc
+[PASS] BOOT: defender_campaign x network_breach
+[PASS] BOOT: playground x level_0_tutorial
+[PASS] BOOT: playground x input_trust_failures
+[PASS] BOOT: playground x linux_privesc
+[PASS] BOOT: playground x network_breach
+[PASS] WIN: guided_simulation x level_0_tutorial -> VICTORY
+[WARN] WIN: attacker_campaign x level_0_tutorial -> active
+[WARN] WIN: defender_campaign x level_0_tutorial -> active
+[WARN] WIN: playground x level_0_tutorial -> active
+[FAIL] WIN: guided x broken_trust -> active
+[PASS] WIN: attacker x broken_trust -> victory (after 2 attempts)
+[PASS] WIN: defender x broken_trust -> victory
+[PASS] WIN: playground x broken_trust -> active (sandbox, no win expected)
+[WARN] STRUCT: linux_privesc -> scenarioName='Operation: Glass Ceiling' (no unique backend config)
+[WARN] STRUCT: network_breach -> scenarioName='Operation: Silent Echo' (no unique backend config)
+
+PASSED: 20  WARNINGS: 5  FAILED: 1
+RESULT: SOME TESTS FAILED

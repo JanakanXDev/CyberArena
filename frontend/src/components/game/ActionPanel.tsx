@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Action, Hypothesis } from '../../types/game';
+import { Action, ExperienceMode, Hypothesis } from '../../types/game';
 import { Crosshair, Lock, Brain, Check } from 'lucide-react';
 import { JargonText } from './JargonText';
 
@@ -7,6 +7,7 @@ interface ActionPanelProps {
   actions: Action[];
   hypotheses: Hypothesis[];
   actionHistory?: Array<{ action_id: string }>;
+  experienceMode?: ExperienceMode;
   onAction: (actionId: string) => void;
   isProcessing?: boolean;
 }
@@ -15,6 +16,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   actions,
   hypotheses,
   actionHistory = [],
+  experienceMode = 'advanced',
   onAction,
   isProcessing
 }) => {
@@ -52,6 +54,13 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
     setNlpInput('');
   };
 
+  const beginnerSuggestions = [
+    'Input validation is active',
+    'Timing behavior is inconsistent',
+    'Requests are being rate limited',
+    'Authentication retries are being restricted'
+  ];
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Beginner Guide Tip */}
@@ -72,25 +81,52 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
         </div>
       )}
 
-      {/* NLP Hypothesis Input Section */}
+      {/* Hypothesis Input Section */}
       <div className="shrink-0 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-b-2 border-purple-500/50 px-6 py-4">
         <div className="flex items-center gap-2 mb-3">
           <Brain className="w-5 h-5 text-purple-400" />
           <span className="text-sm font-bold text-purple-400 uppercase tracking-widest">
-            Form Hypotheses
+            {experienceMode === 'beginner' ? 'Guided Hypothesis Builder' : 'Form Hypotheses'}
           </span>
         </div>
-        
+
+        {experienceMode === 'beginner' && (
+          <div className="mb-3">
+            <p className="text-[11px] text-slate-300 mb-2">The system behavior suggests:</p>
+            <div className="flex flex-wrap gap-2">
+              {beginnerSuggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => onAction(`hypothesis_text:${s}`)}
+                  className="px-2 py-1 rounded border border-purple-700/40 bg-purple-900/20 hover:bg-purple-800/30 text-xs text-purple-200 disabled:opacity-50"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleNlpSubmit} className="flex gap-2 mb-4 relative z-20">
-          <input 
+          <input
             type="text"
             value={nlpInput}
             onChange={(e) => setNlpInput(e.target.value)}
             disabled={isProcessing}
-            placeholder={isProcessing ? "Validating theory with LLM..." : "e.g. The attacker used a SQL injection to bypass login..."}
+            placeholder={
+              isProcessing
+                ? 'Validating theory with LLM...'
+                : experienceMode === 'beginner'
+                ? 'Simple sentence: e.g. input validation is active'
+                : experienceMode === 'intermediate'
+                ? 'Describe your reasoning briefly and clearly...'
+                : 'e.g. The attacker used a SQL injection to bypass login...'
+            }
             className="flex-1 bg-[#161618] border border-slate-700 rounded p-3 text-sm text-slate-200 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all font-mono placeholder:font-sans placeholder:text-slate-600 disabled:opacity-50"
           />
-          <button 
+          <button
             type="submit"
             disabled={!nlpInput.trim() || isProcessing}
             className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold uppercase tracking-widest text-xs rounded transition-colors"

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Dashboard } from '../layout/Dashboard';
 import { BriefingScreen } from './BriefingScreen';
 import { api } from '../../api/client';
-import { GameState, LearningMode } from '../../types/game';
+import { ExperienceMode, GameState, LearningMode } from '../../types/game';
 
 const LOADING_STATE: GameState = {
   mode: 'guided_simulation',
@@ -30,7 +30,8 @@ export const GameSession = () => {
     mode = 'guided_simulation' as LearningMode,
     scenarioId = 'input_trust_failures',
     difficulty = 'medium',
-    scenarioName = 'Operation: Broken Trust'
+    scenarioName = 'Operation: Broken Trust',
+    experienceMode = 'advanced' as ExperienceMode
   } = location.state || {};
 
   // Phase: 'briefing' → 'loading' → 'playing'
@@ -40,7 +41,7 @@ export const GameSession = () => {
   const startGame = useCallback(async () => {
     setPhase('loading');
     try {
-      const initialState = await api.startGame(mode, difficulty, scenarioId, 0);
+      const initialState = await api.startGame(mode, difficulty, scenarioId, 0, experienceMode);
       setGameState(initialState);
       setPhase('playing');
     } catch (error) {
@@ -48,7 +49,7 @@ export const GameSession = () => {
       alert(`Failed to start game: ${error instanceof Error ? error.message : String(error)}`);
       setPhase('briefing'); // Allow retry
     }
-  }, [mode, difficulty, scenarioId]);
+  }, [mode, difficulty, scenarioId, experienceMode]);
 
   const [isProcessing, setIsProcessing] = useState(false);
 

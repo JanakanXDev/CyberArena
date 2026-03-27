@@ -1,6 +1,7 @@
 // src/types/game.ts
 
 export type LearningMode = 'guided_simulation' | 'attacker_campaign' | 'defender_campaign' | 'playground';
+export type ExperienceMode = 'beginner' | 'intermediate' | 'advanced';
 
 export interface Log {
   id: string;
@@ -49,6 +50,7 @@ export interface MentorGuidance {
 
 export interface GameState {
   mode: LearningMode;
+  experienceMode?: ExperienceMode;
   scenarioId: string;
   scenarioName: string;
   turnCount: number;
@@ -112,6 +114,9 @@ export interface GameState {
   // AI Counter-Move system
   aiLastMove?: AiMove;
   aiMoveHistory?: AiMove[];
+
+  // Additive hypothesis evaluation envelope (optional, backend-provided)
+  hypothesisEvaluation?: HypothesisEvaluation;
 }
 
 export interface StrategicDebrief {
@@ -142,4 +147,18 @@ export interface AiMove {
   effects_summary: string[];     // e.g. ["+15 Pressure", "Locks Isolate (1t)"]
   counter_hint: string;          // what to do to counter this
   message?: string;
+}
+
+export interface VisualStep {
+  source: string;
+  target: string;
+  status: 'safe' | 'warning' | 'danger' | 'fail' | string;
+  desc: string;
+}
+
+export interface HypothesisEvaluation {
+  status: 'correct' | 'partial' | 'wrong';
+  feedback: string;
+  hint: string;
+  matched_signals: string[];
 }

@@ -810,7 +810,7 @@ class OllamaValidator:
     Does NOT decide correctness — that is the Engine's job."""
 
     @staticmethod
-    def parse_intent(user_text: str, hypothesis_labels: list) -> dict:
+    def parse_intent(user_text: str, hypothesis_labels: list, experience_mode: str = "advanced") -> dict:
         """
         Sends user_text to LLaMA to extract structured intent.
         Returns: { "target": str, "claim": str, "confidence": float,
@@ -826,8 +826,25 @@ class OllamaValidator:
             for h in hypothesis_labels
         )
 
+        mode = (experience_mode or "advanced").lower()
+        mode_guidance = {
+            "beginner": (
+                "Treat broad beginner wording as valid intent if it references any real system signal. "
+                "Prefer conservative parsing; do not invent hidden claims."
+            ),
+            "intermediate": (
+                "Allow partial but meaningful phrasing. Map user statements to the closest real hypothesis intent "
+                "without over-interpreting unstated details."
+            ),
+            "advanced": (
+                "Use strict interpretation. Only map to a hypothesis when the user's wording clearly supports it."
+            )
+        }.get(mode, "Use strict interpretation unless evidence is explicit.")
+
         prompt = f"""You are a cybersecurity intent parser. Your ONLY job is to understand 
 what system component and claim the user is making. You do NOT judge correctness.
+Experience mode: {mode}
+Mode guidance: {mode_guidance}
 
 The user wrote: "{user_text}"
 

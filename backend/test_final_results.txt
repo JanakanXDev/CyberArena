@@ -1,0 +1,62 @@
+CYBERARENA COMPREHENSIVE TEST RESULTS
+============================================================
+
+  [INFO] TEST 1: BOOT STABILITY (16 combos)
+  [PASS] boot: guided_simulation x level_0_tutorial
+  [PASS] boot: guided_simulation x input_trust_failures
+  [PASS] boot: guided_simulation x linux_privesc
+  [PASS] boot: guided_simulation x network_breach
+  [PASS] boot: attacker_campaign x level_0_tutorial
+  [PASS] boot: attacker_campaign x input_trust_failures
+  [PASS] boot: attacker_campaign x linux_privesc
+  [PASS] boot: attacker_campaign x network_breach
+  [PASS] boot: defender_campaign x level_0_tutorial
+  [PASS] boot: defender_campaign x input_trust_failures
+  [PASS] boot: defender_campaign x linux_privesc
+  [PASS] boot: defender_campaign x network_breach
+  [PASS] boot: playground x level_0_tutorial
+  [PASS] boot: playground x input_trust_failures
+  [PASS] boot: playground x linux_privesc
+  [PASS] boot: playground x network_breach
+  [INFO] TEST 2: CONTENT QUALITY (actions & hypotheses)
+  [PASS] content: guided_simulation x level_0_tutorial -- 2 actions, 1 hyps
+  [PASS] content: guided_simulation x input_trust_failures -- 5 actions, 3 hyps
+  [PASS] content: guided_simulation x linux_privesc -- 5 actions, 3 hyps
+  [PASS] content: guided_simulation x network_breach -- 5 actions, 3 hyps
+  [PASS] content: attacker_campaign x level_0_tutorial -- 2 actions, 1 hyps
+  [PASS] content: attacker_campaign x input_trust_failures -- 5 actions, 3 hyps
+  [PASS] content: attacker_campaign x linux_privesc -- 5 actions, 3 hyps
+  [PASS] content: attacker_campaign x network_breach -- 5 actions, 3 hyps
+  [PASS] content: defender_campaign x level_0_tutorial -- 2 actions, 1 hyps
+  [PASS] content: defender_campaign x input_trust_failures -- 5 actions, 3 hyps
+  [PASS] content: defender_campaign x linux_privesc -- 5 actions, 3 hyps
+  [PASS] content: defender_campaign x network_breach -- 5 actions, 3 hyps
+  [PASS] content: playground x level_0_tutorial -- 2 actions, 1 hyps
+  [PASS] content: playground x input_trust_failures -- 4 actions, 1 hyps
+  [PASS] content: playground x linux_privesc -- 4 actions, 1 hyps
+  [PASS] content: playground x network_breach -- 4 actions, 1 hyps
+  [INFO] TEST 3: WINABILITY
+  [INFO]   Tutorial scenario (all modes)
+  [PASS] win: guided_simulation x tutorial on attempt 1
+  [FAIL] win: attacker_campaign x tutorial -- final=active
+  [FAIL] win: defender_campaign x tutorial -- final=active
+  [FAIL] win: playground x tutorial -- final=active
+  [INFO]   Guided Simulation x Broken Trust
+  [PASS] win: guided x broken_trust on attempt 1
+  [INFO]   Attacker Campaign x Broken Trust
+  [PASS] win: attacker x broken_trust on attempt 1
+  [INFO]   Defender Campaign x Broken Trust
+  [PASS] win: defender x broken_trust on attempt 1
+  [INFO]   Playground x Broken Trust (sandbox, no win intended)
+  [PASS] win: playground x broken_trust -- correctly has NO win conditions (state=active)
+  [INFO] TEST 4: STRUCTURAL QUALITY
+  [INFO] struct: linux_privesc resolves to scenarioName='Operation: Glass Ceiling'
+  [WARN] struct: linux_privesc -- no dedicated backend config (falls back to Broken Trust content)
+  [INFO] struct: network_breach resolves to scenarioName='Operation: Silent Echo'
+  [WARN] struct: network_breach -- no dedicated backend config (falls back to Broken Trust content)
+
+  PASSED:   37
+  WARNINGS: 2
+  FAILED:   3
+
+  RESULT: SOME TESTS FAILED

@@ -1,0 +1,29 @@
+BOOT-PASS|guided_simulation|level_0_tutorial
+BOOT-PASS|guided_simulation|input_trust_failures
+BOOT-PASS|guided_simulation|linux_privesc
+BOOT-PASS|guided_simulation|network_breach
+BOOT-PASS|attacker_campaign|level_0_tutorial
+BOOT-PASS|attacker_campaign|input_trust_failures
+BOOT-PASS|attacker_campaign|linux_privesc
+BOOT-PASS|attacker_campaign|network_breach
+BOOT-PASS|defender_campaign|level_0_tutorial
+BOOT-PASS|defender_campaign|input_trust_failures
+BOOT-PASS|defender_campaign|linux_privesc
+BOOT-PASS|defender_campaign|network_breach
+BOOT-PASS|playground|level_0_tutorial
+BOOT-PASS|playground|input_trust_failures
+BOOT-PASS|playground|linux_privesc
+BOOT-PASS|playground|network_breach
+TUT-PASS|guided_simulation
+TUT-PASS|attacker_campaign
+TUT-PASS|defender_campaign
+TUT-PASS|playground
+GUIDED-PASS|guided x broken_trust
+ATT-PASS|via act_noise_flood on run 1
+DEF-PASS|defender x broken_trust
+PG-PASS|playground win_conditions=[]
+STRUCT-INFO|linux_privesc='Operation: Glass Ceiling'
+STRUCT-INFO|network_breach='Operation: Silent Echo'
+
+SUMMARY: PASS=24 FAIL=0 OTHER=2
+RESULT: ALL PASS

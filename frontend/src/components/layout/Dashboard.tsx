@@ -47,6 +47,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction, isProcess
           <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">{state.scenarioName}</div>
           <div className="h-4 w-px bg-slate-700" />
           <div className="text-xs font-bold text-slate-500">Turn {state.turnCount}</div>
+          {state.experienceMode && (
+            <>
+              <div className="h-4 w-px bg-slate-700" />
+              <div className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border ${
+                state.experienceMode === 'beginner'
+                  ? 'bg-blue-900/40 text-blue-300 border-blue-500/40'
+                  : state.experienceMode === 'intermediate'
+                  ? 'bg-amber-900/40 text-amber-300 border-amber-500/40'
+                  : 'bg-slate-900/60 text-slate-300 border-slate-600/60'
+              }`}>
+                {state.experienceMode}
+              </div>
+            </>
+          )}
           {state.scenarioState && state.scenarioState !== 'active' && (
             <>
               <div className="h-4 w-px bg-slate-700" />
@@ -136,14 +150,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction, isProcess
                 <span className="text-purple-400 text-[9px]">Test hypotheses → unlock actions</span>
               )}
             </div>
-            <div className="pt-7 h-full overflow-hidden">
+            <div className="pt-7 h-full overflow-hidden flex flex-col">
+              {state.hypothesisEvaluation && (
+                <div className={`mx-3 mt-2 mb-2 rounded border px-3 py-2 text-xs shrink-0 ${
+                  state.hypothesisEvaluation.status === 'correct'
+                    ? 'bg-emerald-950/40 border-emerald-700/60'
+                    : state.hypothesisEvaluation.status === 'partial'
+                    ? 'bg-amber-950/40 border-amber-700/60'
+                    : 'bg-red-950/30 border-red-800/60'
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="uppercase tracking-widest text-[10px] text-slate-400">
+                      Hypothesis Feedback
+                    </span>
+                    <span className={`uppercase text-[10px] font-bold tracking-wider ${
+                      state.hypothesisEvaluation.status === 'correct'
+                        ? 'text-emerald-300'
+                        : state.hypothesisEvaluation.status === 'partial'
+                        ? 'text-amber-300'
+                        : 'text-red-300'
+                    }`}>
+                      {state.hypothesisEvaluation.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-slate-200">{state.hypothesisEvaluation.feedback}</p>
+                  <p className="mt-1 text-slate-400">Hint: {state.hypothesisEvaluation.hint}</p>
+                </div>
+              )}
+              <div className="flex-1 overflow-hidden">
               <ActionPanel
                 actions={state.availableActions}
                 hypotheses={state.hypotheses}
                 actionHistory={state.actionHistory}
+                experienceMode={state.experienceMode}
                 onAction={onAction}
                 isProcessing={isProcessing}
               />
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Sword, GraduationCap, Gamepad2, Lock } from 'lucide-react';
+import { GraduationCap, Gamepad2 } from 'lucide-react';
 
 export const Home = () => {
   const navigate = useNavigate();
@@ -55,6 +55,36 @@ export const Home = () => {
             </p>
           </div>
 
+        </div>
+
+        <div className="mt-12 bg-slate-900/40 border border-slate-800 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-white mb-2">Choose Your Experience</h2>
+          <p className="text-slate-400 text-sm mb-4">
+            Select a learning experience. If not selected, Advanced is used by default.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button
+              onClick={() => navigate('/play', { state: { experienceMode: 'beginner' } })}
+              className="text-left p-4 rounded border border-slate-800 bg-slate-900/60 hover:border-emerald-500 transition-all"
+            >
+              <div className="text-sm font-bold text-emerald-300">Beginner</div>
+              <div className="text-xs text-slate-400 mt-1">Guided learning, simple scenarios, step-by-step reasoning</div>
+            </button>
+            <button
+              onClick={() => navigate('/play', { state: { experienceMode: 'intermediate' } })}
+              className="text-left p-4 rounded border border-slate-800 bg-slate-900/60 hover:border-amber-500 transition-all"
+            >
+              <div className="text-sm font-bold text-amber-300">Intermediate</div>
+              <div className="text-xs text-slate-400 mt-1">Partial guidance, moderate difficulty, partial credit hints</div>
+            </button>
+            <button
+              onClick={() => navigate('/play', { state: { experienceMode: 'advanced' } })}
+              className="text-left p-4 rounded border border-slate-800 bg-slate-900/60 hover:border-blue-500 transition-all"
+            >
+              <div className="text-sm font-bold text-blue-300">Advanced</div>
+              <div className="text-xs text-slate-400 mt-1">Full simulation, no extra guidance, current behavior</div>
+            </button>
+          </div>
         </div>
       </div>
     </div>

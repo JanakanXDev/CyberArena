@@ -4,6 +4,7 @@ Integrates simulation engine, AI systems, and learning analytics
 """
 
 import datetime
+import logging
 import traceback
 from simulation_engine import SimulationEngine, LearningMode, Hypothesis, Phase, Action
 from ai_systems import OpponentAI, MentorAI, AIPersona, AIDifficulty
@@ -15,6 +16,58 @@ current_engine: SimulationEngine = None
 current_mentor: MentorAI = None
 current_analytics: LearningAnalytics = LearningAnalytics()
 session_start_time: datetime.datetime = None
+current_experience_mode: str = "advanced"
+
+_eval_logger = logging.getLogger("cyberarena.hypothesis_eval")
+if not _eval_logger.handlers:
+    logging.basicConfig(level=logging.INFO)
+
+
+def _normalize_experience_mode(mode: str) -> str:
+    """Normalize UX/evaluation mode while preserving legacy behavior."""
+    normalized = (mode or "advanced").strip().lower()
+    if normalized in ("beginner", "intermediate", "advanced"):
+        return normalized
+    return "advanced"
+
+
+def _is_clear_contradiction(verdict: dict) -> bool:
+    """Only hard reject when no real signals were matched."""
+    return len(verdict.get("matched_signals", [])) == 0
+
+
+def _status_feedback_hint(
+    status: str,
+    feedback: str,
+    matched_signals: list,
+    mode: str
+) -> dict:
+    """Build additive hypothesis feedback envelope expected by UI/API."""
+    gentle_prefix = "You're close, but " if mode == "beginner" else ""
+
+    if status == "correct":
+        hint = "Great read. Apply a confirming action to capitalize on this signal."
+    elif status == "partial":
+        hint = "Focus on timing, validation, or monitoring shifts and refine one missing detail."
+    else:
+        hint = "Re-check live system signals first, then restate your reasoning around observed behavior."
+
+    if mode == "beginner":
+        if status == "wrong":
+            feedback_text = f"{gentle_prefix}this doesn't match the timing or validation behavior currently shown."
+        elif status == "partial":
+            feedback_text = f"{gentle_prefix}your reasoning tracks some real behavior, but one part is still off."
+        else:
+            feedback_text = "Nice work. Your reasoning matches the system's observed behavior."
+    else:
+        feedback_text = feedback
+
+    return {
+        "status": status,
+        "feedback": feedback_text,
+        "hint": hint,
+        "matched_signals": matched_signals,
+    }
 
 
 def create_log(source: str, category: str, log_type: str, message: str, logs: list):
@@ -45,7 +98,12 @@ def _mode_string_to_enum(mode_str: str) -> LearningMode:
 
 
 
-def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai_actions: list = None) -> dict:
+def _engine_state_to_api_response(
+    engine: SimulationEngine,
+    mentor: MentorAI,
+    ai_actions: list = None,
+    hypothesis_evaluation: dict = None
+) -> dict:
     """Convert engine state to API response format"""
     state_dict = engine._get_state_dict()
 
@@ -141,6 +199,7 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai
 
     response = {
         "mode": engine.mode.value,
+        "experienceMode": current_experience_mode,
         "scenarioId": engine.scenario_id,
         "scenarioName": _get_scenario_name(engine.scenario_id),
         "turnCount": engine.turn_count,
@@ -165,6 +224,8 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai
         # AI last move — primary move shown in the Threat Feed panel
         "aiLastMove": ai_actions[0] if ai_actions else None,
         "aiMoveHistory": ai_actions,
+        # Additive hypothesis evaluation envelope (present when a hypothesis is tested)
+        "hypothesisEvaluation": hypothesis_evaluation,
     }
 
     if response["sessionStatus"] == "collapsed":
@@ -180,6 +241,11 @@ def _engine_state_to_api_response(engine: SimulationEngine, mentor: MentorAI, ai
 def _get_scenario_name(scenario_id: str) -> str:
     """Get scenario display name"""
     names = {
+        "level_0_tutorial": "Level 0: The Evidence Loop",
+        "beginner_input_basics": "Beginner: Input Validation Basics",
+        "beginner_rate_limit_basics": "Beginner: Rate Limit Basics",
+        "beginner_auth_basics": "Beginner: Authentication Basics",
+        "intermediate_signal_fusion": "Intermediate: Signal Fusion",
         "input_trust_failures": "Operation: Broken Trust",
         "linux_privesc": "Operation: Glass Ceiling",
         "network_breach": "Operation: Silent Echo"
@@ -187,13 +253,14 @@ def _get_scenario_name(scenario_id: str) -> str:
     return names.get(scenario_id, "Unknown Mission")
 
 
-def reset_game(mode: str, difficulty: str, scenario_id: str, stage_index: int = 0):
+def reset_game(mode: str, difficulty: str, scenario_id: str, stage_index: int = 0, experience_mode: str = "advanced"):
     """Initialize new game session"""
-    global current_engine, current_mentor, session_start_time
+    global current_engine, current_mentor, session_start_time, current_experience_mode
     
     try:
         # Convert mode string to enum
         mode_enum = _mode_string_to_enum(mode)
+        current_experience_mode = _normalize_experience_mode(experience_mode)
         
         # Get scenario configuration
         scenario_config = get_scenario_config(scenario_id, mode_enum, difficulty)
@@ -246,18 +313,20 @@ def configure_session_focus(role: str, component: str):
     return _engine_state_to_api_response(current_engine, current_mentor, [])
 
 
-def process_action(input_data: str):
+def process_action(input_data: str, action_context: dict = None):
     """Process user action or command"""
-    global current_engine, current_mentor
+    global current_engine, current_mentor, current_experience_mode
     
     if not current_engine:
         raise ValueError("No active simulation. Call reset_game first.")
     
     try:
+        action_context = action_context or {}
         if current_engine.state.session_status == "collapsed":
             return _engine_state_to_api_response(current_engine, current_mentor, [])
         ai_actions = []
         ai_intent = None
+        hypothesis_evaluation = None
         # Handle free-text NLP hypothesis testing (Hybrid Validation Pipeline)
         if input_data.startswith("hypothesis_text:"):
             from ai_systems import InputFilter, OllamaValidator, EngineValidator
@@ -281,7 +350,11 @@ def process_action(input_data: str):
                 {"id": h_id, "label": h_data.get("label", h_id)}
                 for h_id, h_data in current_engine._hypotheses_config.items()
             ]
-            intent = OllamaValidator.parse_intent(user_text, hypothesis_labels)
+            intent = OllamaValidator.parse_intent(
+                user_text,
+                hypothesis_labels,
+                experience_mode=current_experience_mode
+            )
 
             current_engine._record_system_event(
                 f"Intent parsed: target='{intent.get('target')}', "
@@ -297,11 +370,40 @@ def process_action(input_data: str):
             classification = verdict["classification"]
             matched_id = verdict.get("matched_hypothesis_id")
             feedback = verdict.get("contradiction_feedback", "")
+            matched_signals = verdict.get("matched_signals", [])
+
+            # Stability-first wrapper: beginner/intermediate are more forgiving.
+            # Advanced mode keeps legacy strictness.
+            if current_experience_mode != "advanced":
+                if classification != "correct" and matched_signals:
+                    classification = "partial"
+                if classification == "incorrect":
+                    classification = "wrong"
+            else:
+                classification = "wrong" if classification == "incorrect" else classification
+
+            _eval_logger.info(
+                "hyp_eval user_input=%r mode=%s target=%r claim=%r class=%s matched_id=%r matched_signals=%s reason=%r",
+                user_text,
+                current_experience_mode,
+                intent.get("target"),
+                intent.get("claim"),
+                classification,
+                matched_id,
+                matched_signals,
+                feedback,
+            )
 
             if classification == "correct" and matched_id:
                 current_engine._record_system_event(
                     f"✓ Hypothesis Validated ({verdict['confidence']:.0%}): {feedback}",
                     "info"
+                )
+                hypothesis_evaluation = _status_feedback_hint(
+                    "correct",
+                    feedback,
+                    matched_signals,
+                    current_experience_mode
                 )
                 # Fall through to process as structured hypothesis test
                 input_data = f"hypothesis:{matched_id}"
@@ -311,6 +413,12 @@ def process_action(input_data: str):
                 current_engine._record_system_event(
                     f"⚠ Partial Match ({verdict['confidence']:.0%}): {feedback}",
                     "warning"
+                )
+                hypothesis_evaluation = _status_feedback_hint(
+                    "partial",
+                    feedback,
+                    matched_signals,
+                    current_experience_mode
                 )
                 if current_engine.ai_opponent:
                     import uuid
@@ -326,13 +434,44 @@ def process_action(input_data: str):
                         current_engine.available_actions, ai_intent, current_engine.mode
                     )
                     current_engine.apply_ai_actions(ai_actions)
-                return _engine_state_to_api_response(current_engine, current_mentor, ai_actions)
+                return _engine_state_to_api_response(
+                    current_engine,
+                    current_mentor,
+                    ai_actions,
+                    hypothesis_evaluation=hypothesis_evaluation
+                )
             else:
-                # Incorrect: full penalty
+                # Hard rejection only when clearly contradictory to current state.
+                if current_experience_mode != "advanced" and not _is_clear_contradiction(verdict):
+                    current_engine.state.pressure = min(100, current_engine.state.pressure + 5)
+                    current_engine._record_system_event(
+                        f"⚠ Partial Match ({verdict['confidence']:.0%}): {feedback}",
+                        "warning"
+                    )
+                    hypothesis_evaluation = _status_feedback_hint(
+                        "partial",
+                        feedback,
+                        matched_signals,
+                        current_experience_mode
+                    )
+                    return _engine_state_to_api_response(
+                        current_engine,
+                        current_mentor,
+                        ai_actions,
+                        hypothesis_evaluation=hypothesis_evaluation
+                    )
+
+                # Wrong/contradictory: full penalty
                 current_engine.state.pressure = min(100, current_engine.state.pressure + 10)
                 current_engine._record_system_event(
                     f"✗ Hypothesis Rejected ({verdict['confidence']:.0%}): {feedback}",
                     "error"
+                )
+                hypothesis_evaluation = _status_feedback_hint(
+                    "wrong",
+                    feedback,
+                    matched_signals,
+                    current_experience_mode
                 )
                 if current_engine.ai_opponent:
                     import uuid
@@ -348,7 +487,12 @@ def process_action(input_data: str):
                         current_engine.available_actions, ai_intent, current_engine.mode
                     )
                     current_engine.apply_ai_actions(ai_actions)
-                return _engine_state_to_api_response(current_engine, current_mentor, ai_actions)
+                return _engine_state_to_api_response(
+                    current_engine,
+                    current_mentor,
+                    ai_actions,
+                    hypothesis_evaluation=hypothesis_evaluation
+                )
 
         # Handle structured hypothesis testing
         if input_data.startswith("hypothesis:"):
@@ -417,10 +561,40 @@ def process_action(input_data: str):
                         "Hypothesis Rejected: Insufficient Evidence. AI capitalized on reckless guess.",
                         "error"
                     )
+                    hypothesis_evaluation = _status_feedback_hint(
+                        "wrong",
+                        "Insufficient evidence for this hypothesis at the current turn.",
+                        [],
+                        current_experience_mode
+                    )
                 else:
                     if hyp_config:
                         validated = current_engine.evaluate_hypothesis(theory_id)
                         current_engine.validate_hypothesis(theory_id, validated)
+                        current_signals = [
+                            key for key, val in current_engine.state.system_conditions.items() if val
+                        ]
+                        status = "correct" if validated else "wrong"
+                        feedback_text = (
+                            hyp_config.get("why_correct", "Hypothesis validated by current state.")
+                            if validated
+                            else hyp_config.get("why_wrong", "This does not match current system behavior.")
+                        )
+                        hypothesis_evaluation = _status_feedback_hint(
+                            status,
+                            feedback_text,
+                            current_signals,
+                            current_experience_mode
+                        )
+                        _eval_logger.info(
+                            "hyp_eval user_input=%r mode=%s structured_id=%r status=%s matched_signals=%s reason=%r",
+                            action_context.get("reasoning", f"hypothesis:{theory_id}"),
+                            current_experience_mode,
+                            theory_id,
+                            status,
+                            current_signals,
+                            feedback_text,
+                        )
                 
                 # Always check terminal state after hypothesis validation
                 # (win condition in Guided Simulation is validating all core hypotheses)
@@ -504,7 +678,12 @@ def process_action(input_data: str):
                     current_engine.apply_ai_actions(new_actions)
         
         # Return updated state
-        updated_response = _engine_state_to_api_response(current_engine, current_mentor, ai_actions)
+        updated_response = _engine_state_to_api_response(
+            current_engine,
+            current_mentor,
+            ai_actions,
+            hypothesis_evaluation=hypothesis_evaluation
+        )
         print(f"After action - Actions: {len(updated_response.get('availableActions', []))}, Turn: {updated_response.get('turnCount', 0)}")
         return updated_response
         
