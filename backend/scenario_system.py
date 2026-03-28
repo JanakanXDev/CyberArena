@@ -9,6 +9,20 @@ from simulation_engine import LearningMode
 from ai_systems import AIPersona, AIDifficulty
 import random
 
+# Module 1 (beginner_signals): observe → identify → understand (no hypothesis gate).
+BEGINNER_SIGNALS_WIN_CONDITION: Dict[str, Any] = {
+    "type": "beginner_signals_complete",
+    "observation_actions": ["act_observe_logs", "act_check_state"],
+    "identify_map": {
+        "act_beginner_identify_timing": "timing_jitter",
+        "act_beginner_identify_validation": "validation_tightened",
+        "act_beginner_identify_access": "access_restricted",
+        "act_beginner_identify_routing": "route_shifted",
+        "act_beginner_identify_errors": "errors_suppressed",
+        "act_beginner_identify_deception": "deception_active",
+    },
+}
+
 
 def get_scenario_config(scenario_id: str, mode: LearningMode, difficulty: str) -> Dict[str, Any]:
     """Get scenario configuration based on mode and difficulty"""
@@ -270,20 +284,64 @@ def _configure_beginner_module(base: Dict[str, Any], scenario_id: str) -> Dict[s
     config["ai_difficulty"] = AIDifficulty.RULE_BASED
 
     if scenario_id == "beginner_signals":
-        config["hypotheses"] = [
-            {
-                "id": "hyp_signal_visibility",
-                "label": "System logs expose active defense signals",
-                "description": "If I inspect logs first, I can identify active state changes.",
-                "correct": True,
-                "evidence_required": ["act_observe_logs"],
-                "why_correct": "Correct: logs/state showed active behavior shifts before escalation.",
-                "why_wrong": "Not yet: gather signal evidence first, then test again."
-            }
-        ]
+        config["hypotheses"] = []
         config["actions"] = [
-            {"id": "act_observe_logs", "label": "Observe logs", "description": "Review event logs for active signals.", "type": "inspect", "pressure_delta": 1},
-            {"id": "act_check_state", "label": "Check system state", "description": "Read current state conditions.", "type": "monitor", "pressure_delta": 0},
+            {
+                "id": "act_observe_logs",
+                "label": "Observe logs",
+                "description": "Read recent events: what did the system record after traffic or probes?",
+                "type": "inspect",
+                "pressure_delta": 1,
+            },
+            {
+                "id": "act_check_state",
+                "label": "Check system state",
+                "description": "Open the State Signals panel and note which behaviors are marked active.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
+            {
+                "id": "act_beginner_identify_timing",
+                "label": "Identify: timing / delay behavior",
+                "description": "I observed inconsistent delays or timing jitter in responses.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
+            {
+                "id": "act_beginner_identify_validation",
+                "label": "Identify: input validation / filtering",
+                "description": "I observed stricter input handling, normalization, or blocking.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
+            {
+                "id": "act_beginner_identify_access",
+                "label": "Identify: access / reach restricted",
+                "description": "I observed fewer reachable paths, IP blocks, or scope limits.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
+            {
+                "id": "act_beginner_identify_routing",
+                "label": "Identify: routing / path changed",
+                "description": "I observed traffic taking different routes or endpoints shifting.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
+            {
+                "id": "act_beginner_identify_errors",
+                "label": "Identify: errors hidden or generic",
+                "description": "I observed error detail suppressed or generic failure messages only.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
+            {
+                "id": "act_beginner_identify_deception",
+                "label": "Identify: deceptive or bait behavior",
+                "description": "I observed misleading responses or honeypot-style bait.",
+                "type": "monitor",
+                "pressure_delta": 0,
+            },
         ]
     elif scenario_id == "beginner_hypothesis":
         config["hypotheses"] = [
@@ -717,7 +775,7 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
         
     # Ensure role-specific actions are always available (preventing dead states)
     if role == "attacker":
-        if scenario_id.startswith("beginner_"):
+        if scenario_id.startswith("beginner_") and scenario_id != "beginner_signals":
             focused_actions.append({
                 "id": f"act_focused_attack_{component}",
                 "label": f"[{component.upper()}] Test system behavior safely",
@@ -726,7 +784,7 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
                 "pressure_delta": 1,
                 "stability_delta": 0
             })
-        else:
+        elif not scenario_id.startswith("beginner_"):
             focused_actions.append({
                 "id": f"act_focused_attack_{component}",
                 "label": f"[{component.upper()}] Launch directed exploit",
@@ -756,6 +814,10 @@ def get_focused_content(scenario_id: str, mode: LearningMode, role: str, compone
         win_conditions = [{"type": "hypothesis_validated", "hypothesis_id": "hyp_tutorial"}]
         loss_conditions = [{"type": "pressure_threshold", "target": 100}]
         max_phase = 3
+    elif scenario_id == "beginner_signals" and mode == LearningMode.GUIDED_SIMULATION:
+        win_conditions = [dict(BEGINNER_SIGNALS_WIN_CONDITION)]
+        loss_conditions = [{"type": "pressure_threshold", "target": 100}]
+        max_phase = 5
     elif mode == LearningMode.GUIDED_SIMULATION:
         win_conditions = [{"type": "hypothesis_validated", "target": "all_core_hypotheses"}]
         loss_conditions = [{"type": "pressure_threshold", "target": 100}]

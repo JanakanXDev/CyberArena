@@ -456,6 +456,7 @@ class SimulationEngine:
         # Record action
         self.state.action_history.append({
             "action_id": action_id,
+            "action_label": action.label,
             "action_type": action.type,
             "turn": self.turn_count,
             "timestamp": datetime.now().isoformat(),
@@ -554,7 +555,27 @@ class SimulationEngine:
                 if self.state.stability >= cond.get("target", 100) and self.state.pressure == 0:
                     won = True
                     break
-                    
+            elif cond.get("type") == "beginner_signals_complete":
+                obs_ids = cond.get("observation_actions", [])
+                hist = self.state.action_history
+                obs_ok = all(
+                    any(
+                        a.get("action_id") == oid and not a.get("actually_failed")
+                        for a in hist
+                    )
+                    for oid in obs_ids
+                )
+                if obs_ok:
+                    observed = set(self.state.learning_data.get("beginner_signals_observed", []))
+                    idmap = cond.get("identify_map", {})
+                    for a in hist:
+                        aid = a.get("action_id")
+                        if aid in idmap and not a.get("actually_failed") and idmap[aid] in observed:
+                            won = True
+                            break
+                if won:
+                    break
+
         # Check Loss Conditions
         lost = False
         for cond in self.state.loss_conditions:
@@ -576,7 +597,7 @@ class SimulationEngine:
                     break
 
         # Fallback defeat: player stuck on tactical_fallback for 3+ consecutive turns
-        if not won and not lost:
+        if not won and not lost and self.scenario_id != "beginner_signals":
             recent_actions = self.state.action_history[-3:]
             if len(recent_actions) >= 3 and all(
                 a.get("action_id") == "tactical_fallback" for a in recent_actions
@@ -708,6 +729,10 @@ class SimulationEngine:
         """Set a system condition and record transitions"""
         previous = self.state.system_conditions.get(key)
         self.state.system_conditions[key] = value
+        if value and self.scenario_id == "beginner_signals":
+            seen = self.state.learning_data.setdefault("beginner_signals_observed", [])
+            if key not in seen:
+                seen.append(key)
         if previous is None or previous == value:
             return
         if value:
@@ -734,8 +759,28 @@ class SimulationEngine:
         }
         return on_map.get(key, "System posture changed.") if enabled else off_map.get(key, "System posture normalized.")
 
+    def _sync_component_signals(self):
+        """Mirror system_conditions onto component signal tags for UI coherence."""
+        for comp in self.state.system_components.values():
+            signals = set(comp.get("signals", []))
+            signals.update({"errors_suppressed"} if self.state.system_conditions.get("errors_suppressed") else set())
+            signals.update({"timing_jitter"} if self.state.system_conditions.get("timing_jitter") else set())
+            signals.update({"route_shifted"} if self.state.system_conditions.get("route_shifted") else set())
+            signals.update({"validation_tightened"} if self.state.system_conditions.get("validation_tightened") else set())
+            signals.update({"access_restricted"} if self.state.system_conditions.get("access_restricted") else set())
+            signals.update({"deception_active"} if self.state.system_conditions.get("deception_active") else set())
+            for s in list(signals):
+                if s in self.state.system_conditions and not self.state.system_conditions.get(s, False):
+                    signals.discard(s)
+            comp["signals"] = sorted(signals)
+
     def _apply_pressure_effects(self):
         """Apply system behavior changes based on pressure level"""
+        # Beginner Module 1: teach observable signals; do not wipe AI-driven conditions every turn.
+        if self.scenario_id == "beginner_signals":
+            self._sync_component_signals()
+            return
+
         pressure = self.state.pressure
         if pressure >= 80:
             self._set_condition("errors_suppressed", True)
@@ -766,20 +811,7 @@ class SimulationEngine:
             self._set_condition("access_restricted", False)
             self._set_condition("deception_active", False)
 
-        # Reflect conditions into component signals
-        for comp in self.state.system_components.values():
-            signals = set(comp.get("signals", []))
-            signals.update({"errors_suppressed"} if self.state.system_conditions.get("errors_suppressed") else set())
-            signals.update({"timing_jitter"} if self.state.system_conditions.get("timing_jitter") else set())
-            signals.update({"route_shifted"} if self.state.system_conditions.get("route_shifted") else set())
-            signals.update({"validation_tightened"} if self.state.system_conditions.get("validation_tightened") else set())
-            signals.update({"access_restricted"} if self.state.system_conditions.get("access_restricted") else set())
-            signals.update({"deception_active"} if self.state.system_conditions.get("deception_active") else set())
-            # Remove signals that are no longer active
-            for s in list(signals):
-                if s in self.state.system_conditions and not self.state.system_conditions.get(s, False):
-                    signals.discard(s)
-            comp["signals"] = sorted(signals)
+        self._sync_component_signals()
 
     def _lock_action_type(self, action_type: str, turns: int):
         if not action_type or turns <= 0:
@@ -1060,7 +1092,11 @@ class SimulationEngine:
     def _apply_ai_action_effects(self, ai_action: Dict[str, Any]):
         """Apply AI counter-action effects to simulation state.
         RULE: Every mutation MUST generate a visible system event."""
-        effects = ai_action.get("effects", {}) if isinstance(ai_action, dict) else {}
+        raw_fx = ai_action.get("effects", {}) if isinstance(ai_action, dict) else {}
+        effects = dict(raw_fx) if isinstance(raw_fx, dict) else {}
+        if self.scenario_id == "beginner_signals":
+            effects.pop("lock_action_types", None)
+            effects.pop("lock_actions", None)
         ai_name = ai_action.get("label", ai_action.get("name", "AI Counter-Action"))
         if not effects:
             return

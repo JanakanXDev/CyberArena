@@ -147,6 +147,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": -2,
+            "set_conditions": {"timing_jitter": True},
             "lock_action_types": [{"type": "probe", "turns": 1}],
         },
         "counter_hint": "Switch to a payload-content probe instead of timing analysis.",
@@ -158,6 +159,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": -3,
+            "set_conditions": {"validation_tightened": True},
             "lock_action_types": [
                 {"type": "probe", "turns": 1},
                 {"type": "inspect", "turns": 1},
@@ -172,6 +174,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": -5,
+            "set_conditions": {"access_restricted": True},
             "lock_action_types": [
                 {"type": "probe", "turns": 2},
                 {"type": "stealth_probe", "turns": 2},
@@ -186,6 +189,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": 5,
+            "set_conditions": {"deception_active": True},
             "deploy_honeypot_vuln": {}
         },
         "counter_hint": "Fingerprint endpoints carefully before probing obvious targets.",
@@ -196,6 +200,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "severity": "high",
         "persona": "defender",
         "effects": {
+            "set_conditions": {"validation_tightened": True},
             "harden_components": ["authentication_service", "database"]
         },
         "counter_hint": "Look for alternative lateral movement paths.",
@@ -207,6 +212,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": -8,
+            "set_conditions": {"validation_tightened": True},
             "lock_action_types": [
                 {"type": "escalate", "turns": 2},
                 {"type": "pivot", "turns": 2},
@@ -221,6 +227,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": -6,
+            "set_conditions": {"timing_jitter": True},
             "lock_action_types": [
                 {"type": "stealth_probe", "turns": 2},
                 {"type": "probe", "turns": 2},
@@ -235,6 +242,7 @@ AI_MOVE_CATALOG: Dict[str, Dict[str, Any]] = {
         "persona": "defender",
         "effects": {
             "pressure_delta": -10,
+            "set_conditions": {"access_restricted": True},
             "lock_action_types": [
                 {"type": "escalate", "turns": 3},
                 {"type": "pivot", "turns": 3},

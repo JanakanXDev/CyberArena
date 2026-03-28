@@ -119,6 +119,8 @@ export interface GameState {
   hypothesisEvaluation?: HypothesisEvaluation;
   beginnerLearningPath?: BeginnerLearningPath;
   beginnerStepFeedback?: BeginnerStepFeedback;
+  /** Cumulative signal keys seen in Beginner Module 1 (backend learning_data). */
+  beginnerSignalsObserved?: string[];
 }
 
 export interface StrategicDebrief {
@@ -174,6 +176,8 @@ export interface BeginnerLearningPath {
   currentModulePrompt: string;
   moduleIndex: number;
   totalModules: number;
+  /** Module 1: observation + identification only (no hypothesis gate). */
+  observationOnly?: boolean;
 }
 
 export interface BeginnerStepFeedback {

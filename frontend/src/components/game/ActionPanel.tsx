@@ -1,13 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Action, ExperienceMode, Hypothesis } from '../../types/game';
-import { Crosshair, Lock, Brain, Check, ChevronDown, Zap, Search, Eye, Shield } from 'lucide-react';
+import { Action, BeginnerLearningPath, ExperienceMode, Hypothesis } from '../../types/game';
+import { Crosshair, Lock, Brain, Check, ChevronDown, Zap, Search, Eye, Shield, Target } from 'lucide-react';
 import { JargonText } from './JargonText';
+import {
+  LOCK_REASON,
+  CURRENT_OBJECTIVE,
+  OBSERVATION_ONLY_OBJECTIVE,
+  INTERMEDIATE_HYPOTHESIS_CATEGORIES,
+  IDENTIFY_ACTION_TO_SIGNAL,
+  beginnerSuggestionsForSignals,
+} from '../../utils/guidance';
 
 interface ActionPanelProps {
   actions: Action[];
   hypotheses: Hypothesis[];
-  actionHistory?: Array<{ action_id: string }>;
+  actionHistory?: Array<{ action_id: string; actually_failed?: boolean }>;
   experienceMode?: ExperienceMode;
+  beginnerLearningPath?: BeginnerLearningPath | null;
+  systemConditions?: Record<string, boolean>;
+  beginnerSignalsObserved?: string[];
   onAction: (actionId: string) => void;
   isProcessing?: boolean;
 }
@@ -17,6 +28,9 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   hypotheses,
   actionHistory = [],
   experienceMode = 'advanced',
+  beginnerLearningPath,
+  systemConditions,
+  beginnerSignalsObserved = [],
   onAction,
   isProcessing
 }) => {
@@ -36,16 +50,6 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
     }
   }, [actionHistory.length, lastActionCount]);
 
-  const showLockedFeedback = (actionId: string) => {
-    // Try to find which hypothesis unlocks this action
-    const relatedHyp = hypotheses.find(h => !h.tested && actionId.includes(h.id.toLowerCase()));
-    const msg = relatedHyp
-      ? `Test the “${relatedHyp.label}” hypothesis first to unlock this action.`
-      : 'Validate the required hypothesis first to unlock this action.';
-    setLockedHint(msg);
-    setTimeout(() => setLockedHint(null), 2500);
-  };
-
   const completedActions = actionHistory.length;
 
   const handleNlpSubmit = (e: React.FormEvent) => {
@@ -55,12 +59,53 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
     setNlpInput('');
   };
 
-  const beginnerSuggestions = [
-    'Input validation is active',
-    'Timing behavior is inconsistent',
-    'Requests are being rate limited',
-    'Authentication retries are being restricted'
+  const observationOnly = Boolean(beginnerLearningPath?.observationOnly);
+  const activeSignalKeys = [
+    ...Object.entries(systemConditions || {})
+      .filter(([, on]) => on)
+      .map(([k]) => k),
   ];
+  const signalKeysForIdentify = new Set([...activeSignalKeys, ...beginnerSignalsObserved]);
+  const contextualBeginnerSuggestions = beginnerSuggestionsForSignals(
+    Array.from(new Set([...activeSignalKeys, ...beginnerSignalsObserved]))
+  );
+
+  const primaryActions = actions.filter((a) => !a.id.startsWith('act_beginner_identify'));
+  const identifyCandidates = actions.filter((a) => a.id.startsWith('act_beginner_identify'));
+  const identifyActions = identifyCandidates.filter((a) => {
+    const sig = IDENTIFY_ACTION_TO_SIGNAL[a.id];
+    return sig && signalKeysForIdentify.has(sig);
+  });
+  const observationsComplete =
+    actionHistory.some((a) => a.action_id === 'act_observe_logs' && !a.actually_failed) &&
+    actionHistory.some((a) => a.action_id === 'act_check_state' && !a.actually_failed);
+
+  const objectiveText =
+    observationOnly && experienceMode === 'beginner'
+      ? OBSERVATION_ONLY_OBJECTIVE
+      : CURRENT_OBJECTIVE[experienceMode];
+
+  const meaningfulActions = primaryActions.filter((a) => a.id !== 'tactical_fallback');
+  const hasMeaningfulAvailable = meaningfulActions.some((a) => a.available);
+  const progressBlocked =
+    !observationOnly &&
+    meaningfulActions.length > 0 &&
+    !hasMeaningfulAvailable &&
+    meaningfulActions.some((a) => !a.available);
+
+  const showLockedFeedback = (actionId: string) => {
+    const relatedHyp = hypotheses.find(h => !h.tested && actionId.includes(h.id.toLowerCase()));
+    let msg = LOCK_REASON;
+    if (observationOnly) {
+      msg = 'This action is temporarily unavailable — try again next turn or complete the observation steps first.';
+    } else if (experienceMode === 'beginner') {
+      msg = `${LOCK_REASON} Use “Guided Hypothesis Builder” below to submit a theory.`;
+    } else if (experienceMode === 'intermediate' && relatedHyp) {
+      msg = `${LOCK_REASON} Your theory should address: “${relatedHyp.label}”.`;
+    }
+    setLockedHint(msg);
+    setTimeout(() => setLockedHint(null), 3500);
+  };
 
   const iconForActionType = (type: string) => {
     const t = (type || '').toLowerCase();
@@ -72,8 +117,25 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Current objective — all modes */}
+      <div className="shrink-0 px-4 py-2 rounded-lg border border-slate-800/80 bg-slate-900/40">
+        <p className="text-[11px] text-slate-300 leading-snug">
+          {objectiveText}
+        </p>
+      </div>
+
       {/* Beginner Guide Tip */}
-      {completedActions === 0 && (
+      {completedActions === 0 && experienceMode === 'beginner' && observationOnly && (
+        <div className="shrink-0 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-4 py-2 flex gap-2 items-start">
+          <span className="text-yellow-500 text-lg leading-none mt-0.5">💡</span>
+          <p className="text-[10px] text-yellow-300/80 leading-relaxed">
+            <strong>Start here:</strong> Run <strong>Observe logs</strong>, then <strong>Check system state</strong>. Read{' '}
+            <strong>State Signals</strong> (left panel) — only then pick which behavior you observed. No hypothesis yet;
+            this module is about noticing before naming theories.
+          </p>
+        </div>
+      )}
+      {completedActions === 0 && experienceMode === 'beginner' && !observationOnly && (
         <div className="shrink-0 bg-yellow-900/20 border-b border-yellow-700/30 px-4 py-2 flex gap-2 items-start">
           <span className="text-yellow-500 text-lg leading-none mt-0.5">💡</span>
           <p className="text-[10px] text-yellow-300/80 leading-relaxed">
@@ -90,6 +152,20 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
         </div>
       )}
 
+      {progressBlocked && (
+        <div className="shrink-0 rounded-lg border border-amber-800/50 bg-amber-950/25 px-4 py-3">
+          <div className="text-[11px] font-bold text-amber-200 uppercase tracking-wider mb-1">
+            ⚠ Progress Blocked
+          </div>
+          <p className="text-[11px] text-amber-100/90 leading-relaxed">
+            You must form a hypothesis to continue.
+          </p>
+          <p className="text-[10px] text-amber-200/70 mt-1 leading-relaxed">
+            Your previous actions revealed system behavior.
+          </p>
+        </div>
+      )}
+
       {/* Actions Section - PRIMARY INTERACTION */}
       <div className="px-4 py-4 border border-emerald-900/40 rounded-lg bg-gradient-to-r from-emerald-950/25 to-transparent">
         <div className="flex items-center gap-2 mb-3">
@@ -102,18 +178,17 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
-          {actions.length === 0 ? (
+          {primaryActions.length === 0 ? (
             <div className="col-span-full text-slate-600 text-sm text-center py-6">
               No actions available. {hypotheses.length > 0 ? 'Form a hypothesis first.' : 'Loading actions...'}
             </div>
           ) : (
-            actions.map((action) => {
+            primaryActions.map((action) => {
               const isLocked = !action.available;
-              const requiresHypothesis = hypotheses.some(
-                (h) => !h.tested && action.id.includes(h.id.toLowerCase())
-              );
 
-              const isCompleted = actionHistory.some(a => a.action_id === action.id);
+              const isCompleted =
+                !action.id.startsWith('act_beginner_identify') &&
+                actionHistory.some((a) => a.action_id === action.id);
 
               if (isLocked) {
                 return (
@@ -127,10 +202,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                       <span className="font-bold text-xs">Locked</span>
                     </div>
                     <div className="text-xs font-bold text-slate-400 mb-1">{action.label}</div>
-                    <div className="text-[10px] text-slate-600">
-                      {requiresHypothesis
-                        ? 'Requires valid hypothesis'
-                        : 'Action unavailable'}
+                    <div className="text-[10px] text-amber-200/80 leading-snug">
+                      {LOCK_REASON}
                     </div>
                   </div>
                 );
@@ -209,9 +282,47 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             })
           )}
         </div>
+
+        {observationOnly && experienceMode === 'beginner' && (
+          <div className="mt-4 pt-4 border-t border-emerald-900/30">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-bold text-cyan-300 uppercase tracking-widest">
+                Which behavior did you observe?
+              </span>
+            </div>
+            {!observationsComplete ? (
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Complete <strong>Observe logs</strong> and <strong>Check system state</strong> first. Then options
+                appear here that match signals recorded in State Signals.
+              </p>
+            ) : identifyActions.length === 0 ? (
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                No matching identification yet — check <strong>State Signals</strong> after the next system response,
+                then return here.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {identifyActions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    disabled={isProcessing || !action.available}
+                    onClick={() => onAction(action.id)}
+                    className="w-full text-left border border-cyan-800/50 bg-cyan-950/20 rounded-lg p-3 hover:bg-cyan-900/25 hover:border-cyan-600/50 transition-all disabled:opacity-50"
+                  >
+                    <span className="font-bold text-sm text-cyan-100">{action.label}</span>
+                    <p className="text-[10px] text-slate-400 mt-1">{action.description}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Hypothesis Builder - SECONDARY / COLLAPSIBLE */}
+      {/* Hypothesis Builder - hidden in observation-only Module 1 */}
+      {!observationOnly && (
       <div className="border border-slate-800/80 rounded-lg overflow-hidden">
         <button
           type="button"
@@ -221,7 +332,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           <div className="flex items-center gap-2">
             <Brain className="w-4 h-4 text-purple-400" />
             <span className="text-xs font-bold text-purple-300 uppercase tracking-widest">
-              Guided Hypothesis Builder
+              {experienceMode === 'advanced' ? 'Hypothesis' : 'Guided Hypothesis Builder'}
             </span>
           </div>
           <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showHypothesisBuilder ? 'rotate-180' : ''}`} />
@@ -231,9 +342,11 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           <div className="px-5 py-4 bg-gradient-to-r from-purple-900/20 to-blue-900/10">
             {experienceMode === 'beginner' && (
               <div className="mb-3">
-                <p className="text-[11px] text-slate-300 mb-2">The system behavior suggests:</p>
+                <p className="text-[11px] text-slate-300 mb-2">
+                  Suggestions tied to current State Signals (or write your own below):
+                </p>
                 <div className="flex flex-wrap gap-2">
-                  {beginnerSuggestions.map((s) => (
+                  {contextualBeginnerSuggestions.map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -242,6 +355,32 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                       className="px-2 py-1 rounded border border-purple-700/40 bg-purple-900/20 hover:bg-purple-800/30 text-xs text-purple-200 disabled:opacity-50"
                     >
                       {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {experienceMode === 'intermediate' && (
+              <div className="mb-3">
+                <p className="text-[11px] text-slate-400 mb-2">
+                  Hint categories (structure only — not answers):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {INTERMEDIATE_HYPOTHESIS_CATEGORIES.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={isProcessing}
+                      title={c.hint}
+                      onClick={() =>
+                        setNlpInput((prev) =>
+                          prev.trim() ? `${prev.trim()} ${c.prefix}` : c.prefix
+                        )
+                      }
+                      className="px-2 py-1 rounded border border-amber-800/40 bg-amber-950/30 hover:bg-amber-900/35 text-[10px] text-amber-200/90 uppercase tracking-wider disabled:opacity-50"
+                    >
+                      {c.hint}
                     </button>
                   ))}
                 </div>
@@ -303,6 +442,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

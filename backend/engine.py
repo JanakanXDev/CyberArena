@@ -234,6 +234,9 @@ def _engine_state_to_api_response(
         response["beginnerStepFeedback"] = step_feedback_payload(
             engine.state, engine.available_actions, engine.scenario_id
         )
+        response["beginnerSignalsObserved"] = list(
+            engine.state.learning_data.get("beginner_signals_observed", [])
+        )
 
     if response["sessionStatus"] == "collapsed":
         response["reflectionSummary"] = current_analytics.generate_reflection_summary(

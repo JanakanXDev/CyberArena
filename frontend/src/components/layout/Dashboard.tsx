@@ -115,6 +115,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction, isProcess
               State Signals
             </div>
             <StatusHUD
+              experienceMode={state.experienceMode}
               pressure={state.pressure}
               stability={state.stability}
               userAssumptions={state.userAssumptions}
@@ -187,9 +188,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction, isProcess
                     Module {state.beginnerLearningPath.moduleIndex + 1}/{state.beginnerLearningPath.totalModules}: {state.beginnerLearningPath.currentModuleName}
                   </p>
                   <p className="mt-1 text-slate-400">Goal: {state.beginnerLearningPath.currentModuleGoal}</p>
-                  <p className="mt-2 text-slate-300">What happened: {state.beginnerStepFeedback.what_happened}</p>
-                  <p className="mt-1 text-slate-300">Why: {state.beginnerStepFeedback.why_it_happened}</p>
-                  <p className="mt-1 text-slate-400">Meaning: {state.beginnerStepFeedback.what_it_means}</p>
+                  <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">What happened</p>
+                  <p className="mt-1 text-slate-300 whitespace-pre-line text-xs">{state.beginnerStepFeedback.what_happened}</p>
+                  <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Why</p>
+                  <p className="mt-1 text-slate-300 whitespace-pre-line text-xs">{state.beginnerStepFeedback.why_it_happened}</p>
+                  <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Meaning</p>
+                  <p className="mt-1 text-slate-400 whitespace-pre-line text-xs">{state.beginnerStepFeedback.what_it_means}</p>
                 </div>
               )}
               <ActionPanel
@@ -197,6 +201,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction, isProcess
                 hypotheses={state.hypotheses}
                 actionHistory={state.actionHistory}
                 experienceMode={state.experienceMode}
+                beginnerLearningPath={state.beginnerLearningPath}
+                systemConditions={state.systemConditions}
+                beginnerSignalsObserved={state.beginnerSignalsObserved}
                 onAction={onAction}
                 isProcessing={isProcessing}
               />
@@ -205,7 +212,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onAction, isProcess
 
           {/* Evidence is useful, but secondary to action decision flow */}
           <div className="bg-[#101014]">
-            <EvidenceLocker actionHistory={state.actionHistory} />
+            <EvidenceLocker
+              actionHistory={state.actionHistory}
+              experienceMode={state.experienceMode}
+            />
           </div>
         </div>
 

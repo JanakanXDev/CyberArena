@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { AlertTriangle, BookOpen, Layers, Activity } from 'lucide-react';
+import type { ExperienceMode } from '../../types/game';
+import { SIGNAL_GUIDANCE } from '../../utils/guidance';
 
 interface StatusHUDProps {
+  experienceMode?: ExperienceMode;
   pressure: number;
   stability: number;
   userAssumptions: Array<{
@@ -35,6 +38,7 @@ const CONDITION_LABELS: Record<string, string> = {
 };
 
 export const StatusHUD: React.FC<StatusHUDProps> = ({
+  experienceMode = 'advanced',
   pressure,
   stability,
   userAssumptions,
@@ -44,9 +48,15 @@ export const StatusHUD: React.FC<StatusHUDProps> = ({
   reflectionSummary
 }) => {
   const [showSignals, setShowSignals] = useState(true);
-  const activeSignals = Object.entries(systemConditions || {})
+  const beginnerSignalsPinned = experienceMode === 'beginner';
+  const signalsOpen = beginnerSignalsPinned || showSignals;
+  const activeSignalEntries = Object.entries(systemConditions || {})
     .filter(([, active]) => active)
-    .map(([key]) => CONDITION_LABELS[key] || key);
+    .map(([key]) => {
+      const g = SIGNAL_GUIDANCE[key];
+      const label = g?.label ?? CONDITION_LABELS[key] ?? key;
+      return { key, label, g };
+    });
 
   const pressureColor =
     pressure >= 80 ? 'bg-red-500' :
@@ -103,31 +113,67 @@ export const StatusHUD: React.FC<StatusHUDProps> = ({
           </div>
         </div>
 
-        {/* System Signals (collapsible) */}
+        {/* System Signals — always visible in beginner mode */}
         <div>
-          <button
-            type="button"
-            onClick={() => setShowSignals(v => !v)}
-            className="w-full flex items-center justify-between gap-2 mb-3 bg-slate-900/50 border border-slate-800 rounded px-2 py-1.5 hover:bg-slate-800/50"
-          >
-            <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              System Signals
-            </span>
+          {beginnerSignalsPinned ? (
+            <div className="w-full flex items-center gap-2 mb-3 bg-slate-900/50 border border-slate-800 rounded px-2 py-1.5">
+              <Layers className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                System Signals
+              </span>
             </div>
-            <span className="text-[10px] text-slate-500">{showSignals ? 'Hide' : 'Show'}</span>
-          </button>
-          {showSignals && (activeSignals.length === 0 ? (
-            <div className="text-xs text-slate-600">No visible behavioral signals.</div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowSignals(v => !v)}
+              className="w-full flex items-center justify-between gap-2 mb-3 bg-slate-900/50 border border-slate-800 rounded px-2 py-1.5 hover:bg-slate-800/50"
+            >
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  System Signals
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500">{showSignals ? 'Hide' : 'Show'}</span>
+            </button>
+          )}
+          {signalsOpen && (activeSignalEntries.length === 0 ? (
+            experienceMode === 'beginner' ? (
+              <div className="text-[11px] text-slate-400 leading-relaxed space-y-2 border border-slate-800/80 rounded p-2.5 bg-slate-950/40">
+                <div className="font-bold text-emerald-400/90 uppercase tracking-wider text-[10px]">
+                  Active signal detected
+                </div>
+                <p className="text-slate-500">
+                  → None yet — run <span className="text-slate-300">Observe logs</span> or{' '}
+                  <span className="text-slate-300">Check system state</span>, then check here after the system responds.
+                  Defender reactions (for example input validation tightening) will show up as labeled signals.
+                </p>
+              </div>
+            ) : (
+              <div className="text-xs text-slate-600">No visible behavioral signals.</div>
+            )
           ) : (
             <div className="space-y-2">
-              {activeSignals.map((signal) => (
+              {experienceMode === 'beginner' && (
+                <p className="text-[10px] font-bold text-emerald-400/90 uppercase tracking-wider mb-1">
+                  Active signal detected
+                </p>
+              )}
+              {activeSignalEntries.map(({ key, label, g }) => (
                 <div
-                  key={signal}
+                  key={key}
                   className="text-xs p-2 rounded border bg-slate-900/40 border-slate-800 text-slate-300"
                 >
-                  {signal}
+                  <div className="font-bold text-slate-200">→ {label}</div>
+                  {experienceMode === 'beginner' && g && (
+                    <div className="mt-1.5 space-y-1 text-[10px] text-slate-400 leading-relaxed">
+                      <p>{g.short}</p>
+                      <p className="text-slate-500">{g.meaning}</p>
+                    </div>
+                  )}
+                  {experienceMode === 'intermediate' && g && (
+                    <p className="mt-1 text-[10px] text-slate-400 leading-relaxed">{g.short}</p>
+                  )}
                 </div>
               ))}
             </div>
